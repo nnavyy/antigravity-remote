@@ -1,0 +1,9 @@
+{
+  "clean_offline_locked_build": true,
+  "launcher_exe_started": true,
+  "health_engine": "rust-axum",
+  "homepage_http": 200,
+  "pending_tasks": [],
+  "runtime_and_launcher_file_count": 29,
+  "runtime_and_launcher_tree_sha256": "b1b3949b984c96c5b3bb4929d9168c3049468399914f21536958189fc4d630e5"
+}

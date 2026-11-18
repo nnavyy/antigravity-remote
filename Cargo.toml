@@ -1,0 +1,31 @@
+[package]
+name = "antigravity-bridge"
+version = "2.0.0"
+edition = "2021"
+description = "High-performance, memory-safe Rust server for Antigravity Mobile Command Bridge"
+
+[[bin]]
+name = "antigravity-bridge"
+path = "rs/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "native-tls"] }
+sysinfo = "0.30"
+qrcode = "0.14"
+sha2 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+futures-util = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+codegen-units = 1

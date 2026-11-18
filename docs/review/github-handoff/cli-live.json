@@ -1,0 +1,45 @@
+{
+  "verified_date": "2026-11-18",
+  "binary_sha256": "b4e7989e1c816b2aae29840f9cd63635a90854e2d40e38242b1a8fda62c3c403",
+  "target": "cli",
+  "model_ids": [
+    "gemini-4-argon-medium",
+    "gemini-4-argon-high",
+    "gemini-4-argon-low",
+    "gemini-4-hydrogen-high",
+    "gemini-4-hydrogen-xhigh",
+    "gemini-4-hydrogen-medium",
+    "gemini-4-hydrogen-low",
+    "gemini-pro-orchestrator-g1-pro",
+    "gemini-3.8-flash-high",
+    "gemini-3.8-flash-medium",
+    "gemini-3.8-flash-low",
+    "claude-opus-5-5-low",
+    "claude-opus-5-5-medium",
+    "claude-opus-5-5-high",
+    "claude-sonnet-5-5-low",
+    "claude-sonnet-5-5-medium",
+    "claude-sonnet-5-5-high",
+    "gpt-oss-120b-medium"
+  ],
+  "model_count": 18,
+  "requested_models": [
+    "gemini-3.8-flash-low",
+    "gemini-3.8-flash-medium"
+  ],
+  "responses": [
+    "AGY_CONNECTION_OK",
+    "AGY_FOLLOWUP_OK"
+  ],
+  "same_session": true,
+  "streaming_observed": true,
+  "stop_status": "cancelled",
+  "agy_children_after_each_turn": [
+    0,
+    0,
+    0
+  ],
+  "quota_live": true,
+  "verification_workspace": "disposable temporary directory",
+  "prompts_requested_tools_or_file_changes": false
+}

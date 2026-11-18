@@ -1,0 +1,166 @@
+{
+  "date": "2026-11-18",
+  "environment": {
+    "os": "Windows",
+    "logical_cpus": 12,
+    "total_memory_bytes": 8279416832
+  },
+  "scope": "Synthetic loopback HTTP model reads. Inference, WAN and long-lived sessions excluded.",
+  "binary_sha256": "b4e7989e1c816b2aae29840f9cd63635a90854e2d40e38242b1a8fda62c3c403",
+  "stages": [
+    {
+      "route": "/healthz",
+      "concurrency": 1,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.258,
+      "requests_per_second": 776.47,
+      "latency_ms": {
+        "p50": 1.131,
+        "p95": 2.363,
+        "p99": 3.489,
+        "max": 4.496
+      }
+    },
+    {
+      "route": "/api/models?target=ide",
+      "concurrency": 1,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.448,
+      "requests_per_second": 446.55,
+      "latency_ms": {
+        "p50": 2.069,
+        "p95": 3.672,
+        "p99": 4.868,
+        "max": 23.219
+      }
+    },
+    {
+      "route": "/healthz",
+      "concurrency": 8,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.213,
+      "requests_per_second": 939.04,
+      "latency_ms": {
+        "p50": 7.35,
+        "p95": 14.452,
+        "p99": 19.818,
+        "max": 30.48
+      }
+    },
+    {
+      "route": "/api/models?target=ide",
+      "concurrency": 8,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.132,
+      "requests_per_second": 1513.13,
+      "latency_ms": {
+        "p50": 4.991,
+        "p95": 6.806,
+        "p99": 8.502,
+        "max": 8.8
+      }
+    },
+    {
+      "route": "/healthz",
+      "concurrency": 32,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.118,
+      "requests_per_second": 1693.96,
+      "latency_ms": {
+        "p50": 14.057,
+        "p95": 23.42,
+        "p99": 27.402,
+        "max": 32.868
+      }
+    },
+    {
+      "route": "/api/models?target=ide",
+      "concurrency": 32,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.171,
+      "requests_per_second": 1169.69,
+      "latency_ms": {
+        "p50": 19.389,
+        "p95": 36.062,
+        "p99": 42.167,
+        "max": 44.0
+      }
+    },
+    {
+      "route": "/healthz",
+      "concurrency": 64,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.15,
+      "requests_per_second": 1334.29,
+      "latency_ms": {
+        "p50": 20.746,
+        "p95": 33.689,
+        "p99": 36.028,
+        "max": 45.644
+      }
+    },
+    {
+      "route": "/api/models?target=ide",
+      "concurrency": 64,
+      "requests": 200,
+      "errors": {},
+      "error_count": 0,
+      "duration_seconds": 0.089,
+      "requests_per_second": 2244.97,
+      "latency_ms": {
+        "p50": 11.057,
+        "p95": 18.011,
+        "p99": 22.506,
+        "max": 24.688
+      }
+    }
+  ],
+  "forced_refresh_burst": {
+    "route": "/api/models?target=ide&refresh=true",
+    "concurrency": 32,
+    "requests": 32,
+    "errors": {},
+    "error_count": 0,
+    "duration_seconds": 0.334,
+    "requests_per_second": 95.86,
+    "latency_ms": {
+      "p50": 319.016,
+      "p95": 322.832,
+      "p99": 323.497,
+      "max": 324.724
+    },
+    "native_catalog_calls": 1,
+    "fixture_delay_ms": 300
+  },
+  "upstream_recovery": {
+    "failure_connected": false,
+    "failure_model_count": 0,
+    "restored_connected": true,
+    "restored_model_count": 2
+  },
+  "restart": {
+    "health_ok": true,
+    "draft_preserved": true
+  },
+  "resource_samples": {
+    "sample_count": 17,
+    "peak_rss_bytes": 20803584,
+    "median_cpu_percent": 114.7,
+    "peak_cpu_percent": 272.4
+  },
+  "targets_passed": true
+}

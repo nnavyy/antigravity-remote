@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Antigravity Mobile Command</title>
+  <meta name="theme-color" content="#0a0a0c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/app.css?v=10.5">
+  <link rel="stylesheet" href="/static/ux.css?v=10.6">
+</head>
+<body>
+
+  <!-- Top Navigation Bar (Clean Minimalist, No Boxed Badges) -->
+  <header class="top-nav">
+    <div class="nav-brand">
+      <div class="brand-glyph">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          <path d="M2 12h20"></path>
+        </svg>
+      </div>
+      <div class="brand-meta">
+        <span class="brand-title">Antigravity</span>
+        <span class="brand-sub">Remote</span>
+      </div>
+    </div>
+
+    <!-- Account Profile Capsule (Apple Design, Zero Emoji) -->
+    <button id="navAccountCapsule" class="nav-account-capsule" type="button" onclick="openAccountModal()" title="Manage Antigravity account">
+      <div class="nav-avatar-wrapper">
+        <img id="navAccountAvatar" class="nav-account-avatar hidden" src="" alt="Avatar">
+        <span id="navAccountInitial" class="nav-account-initial">U</span>
+        <span id="navAccountDot" class="nav-account-dot online"></span>
+      </div>
+      <div class="nav-account-info">
+        <span id="navAccountName" class="nav-account-name">Loading...</span>
+        <span id="navAccountPlan" class="nav-account-plan">Connecting...</span>
+      </div>
+    </button>
+  </header>
+
+  <!-- Offline Alert Banner -->
+  <div id="offlineBanner" class="offline-banner hidden">
+    <span class="offline-dot"></span>
+    <span class="offline-text">Disconnected from the laptop. Make sure it is awake and the bridge is running.</span>
+    <button id="btnRetryConnection" class="btn-retry" type="button">Reconnect</button>
+  </div>
+
+  <!-- Insecure HTTP Notification Warning Banner (Mobile Context) -->
+  <div id="insecureHttpBanner" class="insecure-http-banner hidden">
+    <div class="insecure-banner-content">
+      <svg class="insecure-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <span class="insecure-text">System notifications require a secure HTTPS connection.</span>
+    </div>
+    <button id="btnSwitchToHttps" class="btn-switch-https" type="button" onclick="switchToHttpsTunnel()">
+      Open HTTPS
+    </button>
+  </div>
+
+  <!-- PWA Install Prompt Banner (Apple Minimalist) -->
+  <div id="pwaInstallBanner" class="pwa-install-banner hidden">
+    <div class="pwa-install-info">
+      <span class="pwa-install-title">Add to home screen</span>
+      <span class="pwa-install-desc">Open Antigravity from your home screen with one tap.</span>
+    </div>
+    <div class="pwa-install-actions">
+      <button id="btnDismissPwa" class="btn-pwa-dismiss" type="button">Later</button>
+      <button id="btnInstallPwa" class="btn-pwa-install" type="button">Install</button>
+    </div>
+  </div>
+
+  <!-- Main Scrollable Dashboard -->
+  <main class="dashboard-container">
+
+    <!-- Segmented Navigation Views (Apple Design - Compact, Zero Clipping) -->
+    <nav class="apple-view-tabs" role="tablist" aria-label="Dashboard">
+      <button id="tabBtnChat" class="view-tab-btn active" type="button" role="tab" aria-selected="true" data-tab="tab-chat" onclick="switchViewTab('tab-chat')" title="Conversations and controls">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>Chat</span>
+      </button>
+      <button id="tabBtnChanges" class="view-tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-changes" onclick="switchViewTab('tab-changes')" title="Review code changes">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        <span>Changes</span>
+        <span id="navChangesBadge" class="nav-changes-badge hidden">0</span>
+      </button>
+      <button id="tabBtnToken" class="view-tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-token" onclick="switchViewTab('tab-token')" title="Model usage and limits">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 6v6l4 2"></path>
+        </svg>
+        <span>Usage</span>
+      </button>
+      <button id="tabBtnWorkspace" class="view-tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-workspace" onclick="switchViewTab('tab-workspace')" title="Manage projects and folders">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>Projects</span>
+      </button>
+      <button id="tabBtnConnect" class="view-tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-connect" onclick="switchViewTab('tab-connect')" title="Connection, pairing and safety">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        <span>Connect</span>
+      </button>
+    </nav>
+
+    <!-- Tab 1: Chat Timeline & AI Command Center -->
+    <div id="tabContentChat" class="tab-view-content active">
+
+      <!-- Card 0: Unified Conversation Session & AI Command Center -->
+      <section class="card session-main-card">
+        <div class="session-card-header">
+          <div class="session-title-block">
+            <div class="session-title-row">
+              <h2 id="activeConvTitle" class="device-title">What would you like to work on?</h2>
+            </div>
+            <div class="conv-meta-row">
+              <span id="activeConvWorkspace" class="clean-subtext session-project" title="Active project folder"></span>
+            </div>
+          </div>
+
+          <!-- Action Toolbar: Spaced & mobile-optimized button cluster -->
+          <div class="session-actions-toolbar">
+            <button aria-label="New conversation" id="btnAddNewTabConvo" class="btn-tab-action add" type="button" onclick="quickCreateNewConvoTab()" title="Create a conversation">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New</span>
+            </button>
+            <button aria-label="Conversation history" id="btnOpenConvModal" class="btn-toolbar" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              <span>History</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Multi-Conversation Concurrent Tabs Bar (Apple Design) -->
+        <div class="multi-convo-tabs-bar">
+          <div class="convo-tabs-scroll-wrap" id="convoTabsWrapper">
+            <div id="convoTabsList" class="convo-tabs-list">
+              <!-- Rendered dynamically: e.g. [Session 1] [Session 2] -->
+            </div>
+          </div>
+          
+        </div>
+
+        <!-- Phone Push Notification Permission Banner -->
+        <div id="notifPermissionBanner" class="notif-permission-banner hidden">
+          <div class="notif-perm-content">
+            <svg class="notif-perm-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <div class="notif-perm-texts">
+              <span id="notifPermTitle" class="notif-perm-title">Notifications are off</span>
+              <span id="notifPermDesc" class="notif-perm-desc">Allow notifications in your browser to receive updates.</span>
+            </div>
+          </div>
+          <button id="btnRequestNotifPerm" class="btn-request-perm" type="button" onclick="requestPhoneNotificationPermission()">
+            Allow
+          </button>
+        </div>
+
+        <!-- Quick Live Token Strip -->
+        <div class="quick-token-strip" id="quickTokenStrip" onclick="switchViewTab('tab-token')" title="View model usage">
+          <div class="token-strip-item">
+            <span class="strip-label">GEMINI:</span>
+            <span class="strip-val" id="stripGeminiWeekly">--</span>
+            <div class="mini-ring-wrapper">
+              <svg width="13" height="13" viewBox="0 0 36 36">
+                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="4.5" />
+                <path id="stripGeminiRing" stroke-dasharray="100, 100" stroke-dashoffset="100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#4ade80" stroke-width="4.5" />
+              </svg>
+            </div>
+          </div>
+          <div class="strip-divider">·</div>
+          <div class="token-strip-item">
+            <span class="strip-label">CLAUDE:</span>
+            <span class="strip-val" id="stripClaudeWeekly">--</span>
+            <div class="mini-ring-wrapper">
+              <svg width="13" height="13" viewBox="0 0 36 36">
+                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="4.5" />
+                <path id="stripClaudeRing" stroke-dasharray="100, 100" stroke-dashoffset="100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#4ade80" stroke-width="4.5" />
+              </svg>
+            </div>
+          </div>
+          <div class="strip-cta">
+            <span>Remaining quota</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card-content" style="padding-top: 4px;">
+        <!-- Active Background Process Card -->
+        <div id="activeTaskBanner" class="active-task-banner hidden">
+          <div class="active-task-header">
+            <div class="active-task-status-row">
+              <span class="active-task-pulse-dot"></span>
+              <span class="active-task-title">Task in progress</span>
+            </div>
+            <div class="active-task-right-header">
+              <span id="activeTaskElapsed" class="active-task-timer">00:00</span>
+              <button id="btnStopActiveProcess" class="btn-stop-active-task" type="button" onclick="stopActiveBackgroundProcess()" title="Stop the running task on the laptop">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                </svg>
+                <span>Stop</span>
+              </button>
+            </div>
+          </div>
+          <div class="active-task-body">
+            <div id="activeTaskPrompt" class="active-task-prompt-text">Processing your instructions...</div>
+            <div class="active-task-meta-row">
+              <div class="active-task-action-wrapper">
+                <svg class="active-spin-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="2" x2="12" y2="6"></line>
+                  <line x1="12" y1="18" x2="12" y2="22"></line>
+                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                  <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                  <line x1="2" y1="12" x2="6" y2="12"></line>
+                  <line x1="18" y1="12" x2="22" y2="12"></line>
+                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                  <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                </svg>
+                <span id="activeTaskActionText">Evaluating the next step...</span>
+              </div>
+              <span id="activeTaskTargetBadge" class="active-task-target-tag">IDE (GUI)</span>
+            </div>
+          </div>
+        </div>
+
+        <section id="toolPermissions" class="tool-permissions hidden" aria-label="Tool permissions">
+          <h3 role="status">Tool permission required</h3>
+          <div id="toolPermissionRequests"></div>
+        </section>
+        <!-- Task Queue Drawer -->
+        <div id="queueBanner" class="queue-banner hidden">
+          <div class="queue-header-row">
+            <div class="queue-header-left">
+              <span class="sub-label">Task queue (<span id="queueCount">0</span> waiting)</span>
+              <span class="queue-subhint">Send when the session is ready</span>
+            </div>
+            <button id="btnClearQueue" class="btn-text-sm" type="button">Clear</button>
+          </div>
+          <div id="queueListContainer" class="queue-list-container">
+            <!-- Dynamic queued items -->
+          </div>
+        </div>
+
+        <!-- Mobile Split-View Segmented Switcher (Adaptive for <768px screens) -->
+        <div id="mobileSplitSwitcher" class="mobile-split-switcher hidden">
+          <button id="btnSplitPane1" type="button" class="mobile-split-btn active" onclick="setMobileSplitPane(1)">
+            <span>Primary conversation</span>
+          </button>
+          <button id="btnSplitPane2" type="button" class="mobile-split-btn" onclick="setMobileSplitPane(2)">
+            <span id="mobileSplitPane2Label">Second conversation</span>
+          </button>
+        </div>
+
+        <!-- Convo Split Grid (Single Mode default or Concurrent Split Mode) -->
+        <div id="convoSplitGrid" class="convo-split-grid single-mode">
+          <!-- Primary Conversation Panel -->
+          <div id="primaryConvoPanel" class="convo-panel primary-panel" style="position: relative;">
+            <div id="conversationTimeline" class="conversation-timeline">
+              <!-- Physical Pull-to-refresh Indicator (Apple Design) -->
+              <div id="ptrIndicator" class="ptr-indicator">
+                <svg class="ptr-spinner-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"></path>
+                </svg>
+                <span id="ptrText" class="ptr-text">Pull to refresh</span>
+              </div>
+              <!-- Messages populated dynamically -->
+              <p class="timeline-start-hint">Choose a conversation or start a new one to send instructions to your laptop.</p>
+              <div id="timelineScrollAnchor" class="timeline-scroll-anchor"></div>
+            </div>
+            <!-- Floating Pill: Jump to latest messages (Apple Design, Zero Emoji) -->
+            <button id="btnScrollToLatest" class="btn-scroll-latest hidden" type="button" onclick="scrollTimelineToBottom(true)" title="Scroll to the latest message">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span>Latest messages</span>
+            </button>
+          </div>
+
+          <!-- Secondary Conversation Panel (Visible when Split View is active) -->
+          <div id="secondaryConvoPanel" class="convo-panel secondary-panel hidden">
+            <div class="secondary-panel-header">
+              <div class="secondary-panel-title-block">
+                <span class="sub-label">Second conversation</span>
+                <span id="secondaryConvTitle" class="secondary-conv-title">Choose a second conversation</span>
+              </div>
+              <div class="secondary-panel-controls">
+                <select id="secondaryConvoSelect" class="secondary-convo-picker" onchange="switchSecondaryConversation(this.value)">
+                  <!-- Populated dynamically -->
+                </select>
+                <button class="btn-close-secondary" type="button" onclick="toggleConvoSplitView(false)" title="Close the second conversation">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Secondary Active Task Banner -->
+            <div id="secondaryActiveTaskBanner" class="active-task-banner secondary hidden">
+              <div class="active-task-header">
+                <div class="active-task-status-row">
+                  <span class="active-task-pulse-dot"></span>
+                  <span class="active-task-title">Second task in progress</span>
+                </div>
+                <span id="secondaryTaskElapsed" class="active-task-timer">00:00</span>
+              </div>
+              <div class="active-task-body">
+                <div id="secondaryTaskPrompt" class="active-task-prompt-text">Processing your instructions...</div>
+                <div class="active-task-meta-row">
+                  <span id="secondaryTaskAction" class="clean-subtext">Evaluating...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Secondary Timeline -->
+            <div id="secondaryConversationTimeline" class="conversation-timeline secondary-timeline">
+              <!-- Messages populated dynamically -->
+            </div>
+
+            <!-- Secondary Dedicated Input Area -->
+            <div class="secondary-input-box">
+              <textarea id="secondaryTaskInput" class="task-input secondary-textarea" placeholder="Send instructions to the second conversation..." rows="2"></textarea>
+              <div class="secondary-input-bottom">
+                <button id="btnSubmitSecondaryTask" class="btn-submit-secondary" type="button" onclick="submitSecondaryTask()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                  <span>Send to second conversation</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive User Agreement / Input from Phone (ask_question & consent) -->
+        <div id="userAgreementCard" class="user-agreement-card hidden">
+          <div class="user-agreement-header">
+            <div class="user-agreement-tag">
+              <span class="user-agreement-dot"></span>
+              <span id="userAgreementActionTitle">Confirmation needed</span>
+            </div>
+            <span id="userAgreementSummary" class="clean-subtext">Antigravity IDE</span>
+          </div>
+          <div class="user-agreement-body">
+            <div id="userAgreementPrompt" class="user-agreement-prompt">
+              <!-- Question from agent or ask_question -->
+            </div>
+            <div id="userAgreementOptionsList" class="user-agreement-options">
+              <!-- Interactive radio / checkbox options -->
+            </div>
+            <div id="userAgreementCustomRow" class="user-agreement-custom-row hidden">
+              <input type="text" id="userAgreementCustomInput" class="user-agreement-input" placeholder="Enter your answer or feedback...">
+            </div>
+            <div class="user-agreement-actions">
+              <button id="btnSubmitAgreement" type="button" class="btn-agreement-submit" onclick="submitUserAgreementAnswer()">
+                <span>Send reply</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Selected Skills Active Strip (Interactive Chips with (x) remove buttons) -->
+        <div id="selectedSkillsContainer" class="selected-skills-container hidden">
+          <div class="selected-skills-label-row">
+            <span class="sub-label">Selected skills (<span id="selectedSkillsNum">0</span>)</span>
+            <button type="button" class="btn-clear-skills" onclick="clearAllSelectedSkills()">Clear</button>
+          </div>
+          <div id="selectedSkillsChips" class="selected-skills-chips">
+            <!-- Dynamic interactive chips -->
+          </div>
+        </div>
+
+        <!-- Quick Command Chips Strip (FR-03: Quick Slash Commands & Laptop Clipboard FR-08) -->
+        <div class="quick-commands-bar" id="quickCommandsBar">
+          <button type="button" class="quick-cmd-chip" data-cmd="/status" onclick="handleQuickCommand('/status')" title="Check laptop and server status">
+            <span class="cmd-prefix">/</span>status
+          </button>
+          <button type="button" class="quick-cmd-chip" data-cmd="/git diff" onclick="handleQuickCommand('/git diff')" title="Review code differences">
+            <span class="cmd-prefix">/</span>git diff
+          </button>
+          <button type="button" class="quick-cmd-chip" data-cmd="/undo" onclick="handleQuickCommand('/undo')" title="Undo the last changes">
+            <span class="cmd-prefix">/</span>undo
+          </button>
+          <button type="button" class="quick-cmd-chip" data-cmd="/audit" onclick="handleQuickCommand('/audit')" title="Audit the code and system">
+            <span class="cmd-prefix">/</span>audit
+          </button>
+          <button type="button" class="quick-cmd-chip" data-cmd="/test" onclick="handleQuickCommand('/test')" title="Run tests and verify the code">
+            <span class="cmd-prefix">/</span>test
+          </button>
+          <button type="button" class="quick-cmd-chip clip-chip" onclick="handleQuickClipboardPaste()" title="Paste the laptop clipboard into this message">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+            <span>Paste from laptop</span>
+          </button>
+          <button type="button" class="quick-cmd-chip clip-chip" onclick="handleQuickClipboardCopy()" title="Copy this message to the laptop clipboard">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy to laptop</span>
+          </button>
+        </div>
+
+        <div class="input-wrapper">
+          <textarea id="taskInput" class="task-textarea" aria-label="Message" rows="3" placeholder="Write a message or use the microphone..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+          <!-- Web Speech API Dictation Button (FR-01) -->
+          <button id="btnVoiceDictation" class="btn-voice-dictation" type="button" onclick="toggleVoiceDictation()" title="Dictate a message" aria-label="Dictate a message" aria-pressed="false">
+            <svg id="voiceDictationIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span id="voiceDictationPulse" class="voice-pulse-ring hidden"></span>
+          </button>
+        </div>
+
+        <div id="voiceDictationStatus" class="voice-dictation-status hidden">
+          <span class="voice-live-dot"></span>
+          <span id="voiceStatusText">Listening...</span>
+        </div>
+
+        <!-- AI Model & Performance Selector Bar (Apple Segmented Bar) -->
+        <details class="composer-options">
+          <summary>Task options and attachments</summary>
+            <button id="btnToggleSplitView" class="btn-tab-action split" type="button" onclick="toggleConvoSplitView()" title="Open two conversations side by side">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+              </svg>
+              <span id="splitViewBtnText">Split view</span>
+            </button>
+        <!-- Dedicated Sound Control Strip (Phone & Laptop Audio) -->
+        <div class="sound-control-strip">
+          <button id="btnEnableNotifications" class="btn-sound-toggle active" type="button" title="Notification sounds">
+            <span class="sound-pulse-dot"></span>
+            <span id="notifBtnLabel">Sounds on</span>
+          </button>
+          <button id="btnTestSound" class="btn-sound-test" type="button" title="Play a test sound on your devices" onclick="testSoundBoth()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+            <span>Test sound</span>
+          </button>
+        </div>
+
+
+        <p class="composer-options-note">Models and performance levels come from your connected Antigravity account.</p>
+        <div class="model-selector-bar">
+          <!-- Row 1: Execution Target (IDE GUI vs CLI Headless) -->
+          <div class="selector-field-row target-field-row">
+            <div class="model-selector-label-group">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+              <span class="sub-label">Target</span>
+            </div>
+            <div class="apple-segmented-control" id="executionTargetSelector" role="group" aria-label="AGY connection target" aria-describedby="executionTargetHint">
+              <button type="button" class="segment-btn active" data-target="auto" title="Use the available AGY connection">Auto</button>
+              <button type="button" class="segment-btn" data-target="ide" title="Use the standalone Antigravity App on the laptop">Antigravity App</button>
+              <button type="button" class="segment-btn" data-target="cli" title="Use AGY CLI">AGY CLI</button>
+            </div>
+          </div>
+          <p id="executionTargetHint" class="target-hint hidden" role="status"></p>
+
+          <!-- Row 2: Model AI -->
+          <div class="selector-field-row model-field-row">
+            <div class="model-selector-label-group">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span class="sub-label">Model</span>
+            </div>
+            <button id="btnOpenModelSheet" class="btn-model-trigger" type="button" aria-haspopup="dialog">
+              <span id="selectedModelLabel">Use session model</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+
+          <div class="selector-field-row performance-field-row">
+            <span class="sub-label">Performance</span>
+            <div class="apple-segmented-control" id="mainPerformanceSelector" role="group" aria-label="Model performance">
+              <span class="performance-hint">Waiting for Antigravity</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Image Attachment Control (Send images from phone) -->
+        <div class="attachment-bar">
+          <label class="btn-attach-image" for="imageFileInput">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span>Attach images</span>
+          </label>
+          <input type="file" id="imageFileInput" accept="image/*" multiple class="hidden">
+          <div id="imagePreviewContainer" class="image-preview-container hidden"></div>
+        </div>
+
+        <!-- AI Skill Recommendation Bar -->
+        <div class="skills-rec-bar">
+          <button id="btnRecommendSkills" class="btn-secondary" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+            </svg>
+            <span>Suggest skills</span>
+          </button>
+        </div>
+
+        <!-- Recommended Badges Container -->
+        <div id="recChipsContainer" class="rec-chips-container hidden">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Collapsible Skills Panel -->
+        <div class="skills-panel-wrapper">
+          <button type="button" class="skills-header-row" id="toggleSkillsAccordion" aria-expanded="false">
+            <span class="skills-panel-title">Available skills</span>
+            <span class="accordion-arrow">→</span>
+          </button>
+
+          <div id="skillsListDrawer" class="skills-drawer hidden">
+            <div class="skills-search-row">
+              <input type="text" id="skillSearchInput" class="skill-search" placeholder="Search skills..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <div id="skillsCatalog" class="skills-catalog">
+              <!-- Dynamic skill items -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto Execute: Direct execution to Antigravity without staging modal intercept -->
+        </details>
+        <input type="checkbox" id="chkAutoExecute" checked style="display:none;" aria-hidden="true">
+
+        <!-- Send Task Action (Single for Idle, Dual Choice for Busy/Queue Mode) -->
+        <div id="sendActionContainer" class="send-action-container">
+          <!-- State 1: AI Idle (Single standard button) -->
+          <div id="sendActionSingle" class="send-action-row">
+            <button id="btnSubmitTask" class="btn-primary" type="button" onclick="handleTaskSendClick('auto')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+              <span>Send message</span>
+            </button>
+          </div>
+
+          <!-- State 2: AI Processing (Dual choice: Send now vs Add to queue) -->
+          <div id="sendActionBusy" class="send-action-dual hidden">
+            <button id="btnSendNow" class="btn-send-now" type="button" onclick="handleTaskSendClick('send_now')" title="Send directly to Antigravity without waiting">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+              <span>Send now</span>
+            </button>
+            <button id="btnEnqueueTask" class="btn-enqueue" type="button" onclick="handleTaskSendClick('queue')" title="Queue this message to send later">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+              <span>Add to queue</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+      <!-- Card 3: Pending Approval & Bug Inspection (Human-in-the-Loop) -->
+    <section id="approvalSection" class="card approval-card hidden">
+      <div class="card-header highlight">
+        <div>
+          <span class="section-label-amber">Approval required</span>
+          <h3 class="card-title">Review proposed changes</h3>
+        </div>
+        <span id="approvalTaskId" class="clean-mono-id">#TASK-ID</span>
+      </div>
+
+      <div class="card-content">
+        <p id="approvalPrompt" class="prompt-preview">--</p>
+
+        <!-- Bugs Found Section -->
+        <div class="inspection-block">
+          <div class="block-title-row">
+            <span class="sub-label">Findings and analysis</span>
+            <span id="bugCountBadge" class="sub-counter">0 findings</span>
+          </div>
+          <div id="bugListContainer" class="bug-list">
+            <!-- Dynamic bug cards -->
+          </div>
+        </div>
+
+        <!-- Proposed Fixes Section -->
+        <div class="inspection-block">
+          <span class="sub-label">Proposed changes</span>
+          <ul id="fixesListContainer" class="fixes-list">
+            <!-- Dynamic fixes -->
+          </ul>
+        </div>
+
+        <!-- Git Diff Viewer -->
+        <div class="inspection-block">
+          <div class="diff-header-row">
+            <span class="sub-label">UNIFIED GIT DIFF</span>
+            <button id="btnToggleDiff" class="btn-text">Show diff</button>
+          </div>
+          <pre id="diffViewer" class="diff-viewer hidden"><code>// No file changes yet</code></pre>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="approval-actions">
+          <button id="btnApproveTask" class="btn-approve">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>APPROVE & EXECUTE</span>
+          </button>
+          <button id="btnRejectTask" class="btn-reject">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            <span>Request revision</span>
+          </button>
+        </div>
+      </div>
+    </section>
+    </div> <!-- /#tabContentChat -->
+
+    <!-- Tab Changes: Review & Reject File Modifications -->
+    <div id="tabContentChanges" class="tab-view-content hidden">
+      <section class="card changes-master-card">
+        <div class="card-header changes-card-header">
+          <div>
+            <span class="section-label">Workspace changes</span>
+            <h3 class="card-title">Review changes</h3>
+          </div>
+          <div class="changes-header-actions">
+            <button id="btnRefreshChanges" class="btn-icon" type="button" onclick="fetchChanges()" aria-label="Refresh changes" title="Refresh changes">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+              </svg>
+            </button>
+            <button id="btnAcceptAllCard" class="btn-success-sm hidden" type="button" onclick="confirmAcceptAllChanges()" title="Accept and save all file changes">
+              Accept all
+            </button>
+            <button id="btnRejectAllChanges" class="btn-danger-sm hidden" type="button" onclick="confirmRejectAllChanges()" title="Revert tracked changes (preserves untracked files)">
+              Revert tracked
+            </button>
+          </div>
+        </div>
+
+        <div class="changes-summary-bar">
+          <div class="changes-summary-stats">
+            <span id="changesSummaryFiles" class="changes-stat-tag">0 changed files</span>
+            <span id="changesSummaryInsertions" class="changes-stat-add">+0</span>
+            <span id="changesSummaryDeletions" class="changes-stat-del">-0</span>
+          </div>
+          <span id="changesSummaryWorkspace" class="clean-subtext"></span>
+        </div>
+
+        <div id="changesFilesList" class="changes-files-list">
+          <div class="changes-empty-state">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span class="empty-title">No changed files</span>
+            <span class="empty-desc">There are no pending file changes in this project.</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Tab 2: Token & Rate Limit Monitor -->
+    <div id="tabContentToken" class="tab-view-content hidden">
+      <!-- Card 2B: Token Limit & Quota Monitor -->
+    <section class="card quota-master-card">
+      <div class="card-header" style="margin-bottom: 8px;">
+        <div>
+          <span class="section-label">Model usage</span>
+          <h3 class="card-title">Quota remaining</h3>
+        </div>
+        <span id="tokenLastSync" class="clean-subtext">Synced --</span>
+      </div>
+
+      <div class="card-content" style="padding-top: 6px;">
+        <!-- Account Quota Header (Integrated with Active Account) -->
+        <div id="quotaAccountBanner" class="quota-account-banner">
+          <div class="quota-account-left">
+            <div class="quota-avatar-wrap">
+              <img id="quotaBannerAvatar" class="quota-banner-avatar hidden" src="" alt="Avatar">
+              <span id="quotaBannerInitial" class="quota-banner-initial">U</span>
+              <span id="quotaBannerDot" class="quota-banner-dot online"></span>
+            </div>
+            <div class="quota-account-text">
+              <div class="quota-account-name-row">
+                <span id="quotaBannerName" class="quota-banner-name">Loading...</span>
+                <span id="quotaBannerPlan" class="quota-plan-pill">Loading plan...</span>
+              </div>
+              <span id="quotaBannerEmail" class="quota-banner-email">Loading account...</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="quotaGroups" aria-live="polite"><p class="quota-row-subtext">Connecting to model usage...</p></div>
+      </div>
+    </section>
+    </div> <!-- /#tabContentToken -->
+
+    <!-- Tab 3: Workspace, Telemetry & Server System -->
+    <div id="tabContentWorkspace" class="tab-view-content hidden">
+      <!-- Card 1: Workspace & Folder Selector (Browse folders from phone) -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <span class="section-label">Project folder</span>
+          <h2 id="currentWorkspaceName" class="device-title">Current project</h2>
+        </div>
+        <button id="btnBrowseFolders" class="btn-text" aria-label="Browse folders">
+          Browse folders
+        </button>
+      </div>
+
+      <div class="workspace-meta-row">
+        <span id="workspacePathText" class="path-subtext">Select a project</span>
+        <span id="workspaceBranchText" class="branch-subtext">· branch: main</span>
+      </div>
+
+      <div id="workspaceHierarchyBreadcrumb" class="workspace-hierarchy-row">
+        <!-- Rendered dynamically with distinct colored pills for Project, Subfolder 1, and Subfolder 2 -->
+      </div>
+
+      <div class="workspace-shortcuts-row">
+        <button id="btnBrowseSubfolders" class="shortcut-chip highlight" type="button">Choose a subfolder...</button>
+      </div>
+
+      <div class="workspace-select-wrapper">
+        <label for="workspaceSelect" class="field-label">Choose a project on your laptop</label>
+        <select id="workspaceSelect" class="workspace-dropdown">
+          <option value="">Loading folders...</option>
+        </select>
+      </div>
+
+      <div class="workspace-actions-row">
+        <button id="btnOpenInIde" class="btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          <span>Open in Antigravity</span>
+        </button>
+        <button id="btnSetTargetWorkspace" class="btn-accent">
+          <span>Use this project</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Card 2: Laptop Telemetry (Anti-Badge: Tanpa Pill Box Berlebih) -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <span class="section-label">Laptop status</span>
+          <h2 id="deviceHostname" class="device-title">DESKTOP — LAPTOP</h2>
+        </div>
+        <button id="btnRefreshStatus" class="btn-icon" aria-label="Refresh Status">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="telemetry-grid">
+        <!-- Battery Item -->
+        <div class="metric-cell">
+          <div class="metric-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+              <line x1="22" y1="11" x2="22" y2="13"></line>
+            </svg>
+            <span>Battery</span>
+          </div>
+          <div class="metric-value-row">
+            <span id="batteryPercent" class="metric-num">--%</span>
+            <span id="batteryPowerState" class="clean-subtext">Plugged in</span>
+          </div>
+          <div class="progress-track">
+            <div id="batteryBar" class="progress-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- CPU & Memory Item -->
+        <div class="metric-cell">
+          <div class="metric-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+              <rect x="9" y="9" width="6" height="6"></rect>
+              <line x1="9" y1="1" x2="9" y2="4"></line>
+              <line x1="15" y1="1" x2="15" y2="4"></line>
+              <line x1="9" y1="20" x2="9" y2="23"></line>
+              <line x1="15" y1="20" x2="15" y2="23"></line>
+            </svg>
+            <span>CPU / RAM</span>
+          </div>
+          <div class="metric-value-row">
+            <span id="cpuUsage" class="metric-num">--%</span>
+            <span id="ramUsage" class="clean-subtext">--% RAM</span>
+          </div>
+          <div class="progress-track">
+            <div id="cpuBar" class="progress-fill warning" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Antigravity IDE Status -->
+        <div class="metric-cell span-two">
+          <div class="ag-status-row">
+            <div class="ag-info">
+              <span class="metric-label">Antigravity status</span>
+              <div class="ag-state-flex">
+                <span id="agStatusText" class="ag-status-indicator">DETECTING...</span>
+                <span id="agPidBadge" class="clean-subtext">PID: --</span>
+              </div>
+            </div>
+            <button id="btnLaunchIde" class="btn-secondary">
+              <span>Focus IDE</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+      <!-- Card 5: Two-Way Terminal Command Runner -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <span class="section-label">DUAL-WAY EXECUTION</span>
+          <h3 class="card-title">Laptop terminal</h3>
+        </div>
+        <span class="clean-subtext">PowerShell</span>
+      </div>
+
+      <div class="card-content">
+        <div class="cmd-input-row">
+          <input type="text" id="terminalCmdInput" class="terminal-input" placeholder="Enter a command, such as git status..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <button id="btnExecCmd" class="btn-secondary">EXEC</button>
+        </div>
+
+        <div class="terminal-output-box">
+          <div class="terminal-bar">
+            <span>STDOUT / STDERR</span>
+            <button id="btnClearTerminal" class="btn-text-sm">Clear</button>
+          </div>
+          <pre id="terminalOutput" class="terminal-pre"><code>[READY] Waiting for a command...</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Card 6: Activity Stream -->
+    <section class="card">
+      <div class="card-header">
+        <span class="section-label">Activity</span>
+        <span id="logCounter" class="clean-subtext">0 events</span>
+      </div>
+      <div id="activityStream" class="activity-stream">
+        <div class="activity-item">
+          <span class="time-stamp">[INIT]</span>
+          <span class="activity-text">Connected to Antigravity on your laptop.</span>
+        </div>
+      </div>
+    </section>
+    </div> <!-- /#tabContentWorkspace -->
+
+    <!-- Tab 5: Connect (access, pairing, safety) -->
+    <div id="tabContentConnect" class="tab-view-content hidden">
+      <section class="card cx-card cx-pair-card">
+        <div class="cx-pair-copy">
+          <h1 class="cx-heading" id="cxHeading" aria-live="polite">Checking connection…</h1>
+          <p class="cx-intro" id="cxIntro"></p>
+          <div class="cx-sub" id="cxMode"></div>
+          <button class="cx-url" id="cxUrl" type="button" onclick="cxCopy()" title="Copy phone address" disabled>Loading address…</button>
+          <button class="btn-text hidden" id="cxRetry" type="button" onclick="cxRefresh()">Retry connection</button>
+          <button class="btn-text hidden" id="cxChat" type="button" onclick="switchViewTab('tab-chat'); document.getElementById('tabBtnChat').focus()">Open Chat</button>
+          <div class="cx-pin-row hidden" id="cxPinRow"><span>Pairing PIN</span><output id="cxPin">-</output></div>
+          <p class="cx-hint hidden" id="cxQrNote">Keep this laptop on and awake while using your phone.</p>
+        </div>
+        <div class="cx-code-surface hidden" id="cxQrSurface">
+          <span id="cxQrLoading" role="status">Loading QR code...</span>
+          <img id="cxQr" class="cx-qr hidden" alt="Scan to open Antigravity on your phone">
+        </div>
+      </section>
+
+      <details class="cx-settings">
+        <summary>Connection settings</summary>
+      <section class="card cx-card">
+        <h2 class="cx-section-title">Access</h2>
+        <label class="cx-opt"><input type="radio" name="cxAccess" value="lan" onchange="cxSetMode(this.value)" disabled>
+          <span><b>This Wi-Fi only</b><small>Most private. Nothing is exposed to the internet. Default.</small></span></label>
+        <label class="cx-opt"><input type="radio" name="cxAccess" value="tailscale" onchange="cxSetMode(this.value)" disabled>
+          <span><b>Anywhere, with Tailscale</b><small>Recommended for remote use. Fixed address, encrypted, private to your devices. No new links, no extra process.</small></span></label>
+        <div class="cx-hint" id="cxTsStatus"></div>
+        <label class="cx-opt"><input type="radio" name="cxAccess" value="tunnel" onchange="cxSetMode(this.value)" disabled>
+          <span><b>Public link (advanced)</b><small>Requires a separately configured Cloudflare tunnel. Enable after setup. Pairing is still required.</small></span></label>
+        <div class="cx-hint hidden" id="cxOwnerOnly">View only. Change these settings on the laptop.</div>
+      </section>
+
+      <section class="card cx-card">
+        <h2 class="cx-section-title">Security</h2>
+        <label class="cx-row"><span><b>Require PIN even on same Wi-Fi</b><small>Scan the laptop QR or enter its pairing code. Turning this off trusts devices on this Wi-Fi.</small></span>
+          <input type="checkbox" id="cxLanPin" onchange="cxToggleLanPin(this)" disabled></label>
+        <label class="cx-row"><span><b>Allow terminal commands from phone</b><small>Off by default. Only change on the laptop.</small></span>
+          <input type="checkbox" id="cxShell" onchange="cxToggleShell(this)" disabled></label>
+        <button class="cx-danger cx-owner-action" type="button" onclick="cxUnpair()" disabled>Sign out all paired phones</button>
+      </section>
+      <section class="card cx-card">
+        <h2 class="cx-section-title">Dictation language</h2>
+        <label for="dictationLanguage" class="cx-hint">Leave blank to use your device language. You can enter any language code supported by your browser.</label>
+        <input id="dictationLanguage" class="cx-language-input" type="text" placeholder="Automatic, e.g. en-US" onchange="setDictationLanguage(this.value)" autocomplete="off" spellcheck="false">
+        <p class="cx-hint">Microphone availability depends on your browser and connection. Your interface is in English.</p>
+      </section>
+      </details>
+      <div id="cxToast" class="cx-toast" role="status"></div>
+    </div>
+
+  </main>
+
+  <!-- Folder Browser Modal (Browse laptop folders & subfolders) -->
+  <div id="browseModal" class="modal-backdrop hidden">
+    <div class="modal-card browse-modal-card">
+      <div class="modal-header">
+        <div class="modal-header-title-block">
+          <span class="section-label">WORKSPACE BROWSER</span>
+          <h3 class="modal-title">Choose a project folder</h3>
+        </div>
+        <button id="btnCloseBrowseModal" class="btn-icon">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Quick Jump Shortcuts -->
+        <div class="modal-shortcuts-bar">
+          <div class="modal-shortcuts-list">
+            <button class="shortcut-pill" type="button" onclick="openFolderBrowser('desktop')">Desktop</button>
+          </div>
+        </div>
+
+        <!-- Breadcrumbs Navigation -->
+        <div class="modal-breadcrumbs-section">
+          <div id="browseBreadcrumbs" class="browse-breadcrumbs-container">
+            <!-- Clickable breadcrumbs -->
+          </div>
+        </div>
+
+        <!-- Action Bar: Select current folder & Go up -->
+        <div class="browse-action-bar">
+          <button id="btnBrowseParent" class="btn-browse-parent" type="button" title="Go to the parent folder">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>Up</span>
+          </button>
+          <button id="btnSelectThisFolder" class="btn-select-current-ws" type="button">
+            <span>Use this folder</span>
+          </button>
+        </div>
+
+        <div class="subfolders-header-row">
+          <span class="sub-label">Subfolders</span>
+          <span id="subfolderCountText" class="clean-subtext">0 subfolders</span>
+        </div>
+
+        <div id="browseFoldersList" class="apple-folders-list">
+          <!-- Populated dynamically with single-level flat cards -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reject / Revision Feedback Modal -->
+  <div id="rejectModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Request a revision</h3>
+        <button id="btnCloseModal" class="btn-icon">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Describe what Antigravity should change:</p>
+        <textarea id="rejectFeedbackText" class="task-textarea" rows="3" placeholder="For example: Rename the function and remove unused variables..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="btnConfirmReject" class="btn-reject-confirm">Send feedback</button>
+        <button id="btnCancelReject" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal New conversation (Popup Apple Aesthetic) -->
+  <div id="newSessionModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">New conversation</h3>
+          <p class="modal-subtitle">Start a conversation with Antigravity on your laptop.</p>
+        </div>
+        <button id="btnCloseNewSessionModal" class="btn-icon" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <label for="modalSessionTitleInput" class="field-label">Conversation name</label>
+        <input type="text" id="modalSessionTitleInput" class="input-clean" placeholder="For example: Fix login or refactor the API..." autocomplete="off">
+
+        <!-- Quick Suggestions Chips -->
+        <div class="modal-chips-row">
+          <span class="chips-label">Suggestions</span>
+          <div class="chips-list">
+            <button type="button" class="template-chip" data-template="Bug fix">Bug fix</button>
+            <button type="button" class="template-chip" data-template="New feature">New feature</button>
+            <button type="button" class="template-chip" data-template="Refactor">Refactor</button>
+            <button type="button" class="template-chip" data-template="System inspect">Inspect</button>
+            <button type="button" class="template-chip" data-template="Code Review">Review</button>
+          </div>
+        </div>
+
+        <p class="composer-options-note">Choose the model and performance in Task options.</p>
+        <p class="composer-options-note" id="newSessionProject"></p>
+
+        <!-- Initial Prompt (Optional) -->
+        <label for="newSessionPromptInput" class="field-label" style="margin-top:14px;">First message (optional)</label>
+        <textarea id="newSessionPromptInput" class="task-textarea" rows="2" placeholder="Write the first message for this conversation..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="btnCancelNewSession" class="btn-cancel" type="button">Cancel</button>
+        <button id="btnSubmitNewSession" class="btn-accent" type="button">Start conversation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conversation Picker Modal -->
+  <div id="conversationModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Conversation history</h3>
+        </div>
+        <button id="btnCloseConvModal" class="btn-icon" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="conv-modal-top-bar">
+          <span id="convListSummary" class="clean-subtext">Loading conversations...</span>
+        </div>
+        <div id="conversationsListContainer" class="conv-list-container">
+          <!-- List of conversations populated dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Conversation Confirmation Modal -->
+  <div id="deleteConfirmModal" class="modal-backdrop modal-topmost hidden">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete conversation</h3>
+        <button id="btnCloseDeleteModal" class="btn-icon" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Delete this conversation? Its history will be removed from your phone and laptop.</p>
+        <div class="delete-target-preview">
+          <span class="delete-target-label">Conversation</span>
+          <span id="deleteConvTargetTitle" class="delete-target-name">--</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnCancelDeleteConv" class="btn-cancel" type="button">Cancel</button>
+        <button id="btnConfirmDeleteConv" class="btn-danger-confirm" type="button">Delete conversation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apple Action Sheet: Model AI Selector (Fluid Bottom Sheet) -->
+  <div id="modelSheetBackdrop" class="sheet-backdrop hidden">
+    <div class="sheet-card animate-sheet-up">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <h3 class="sheet-title">Choose a model</h3>
+        <p class="sheet-subtitle">Models available to your connected account. Choose performance separately in Task options.</p>
+      </div>
+
+      <div class="sheet-body">
+        <p id="modelCatalogStatus" class="composer-options-note" role="status" aria-live="polite">Connecting to Antigravity...</p>
+        <div id="modelOptions" class="sheet-options-list"></div>
+      </div>
+
+      <div class="sheet-footer">
+        <button id="btnCloseModelSheet" class="btn-sheet-close" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quota Info Bottom Sheet Modal -->
+  <div id="quotaSheetBackdrop" class="sheet-backdrop hidden" onclick="closeQuotaSheet(event)">
+    <div class="sheet-card" onclick="event.stopPropagation()">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <h3 class="sheet-title" id="quotaSheetTitle">Model limits</h3>
+        <p class="sheet-subtitle" id="quotaSheetDesc">Quota and reset information reported by Antigravity.</p>
+      </div>
+      <div id="quotaSheetBody" class="quota-sheet-body">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="sheet-footer">
+        <button id="btnCloseQuotaSheet" class="btn-sheet-close" type="button" onclick="closeQuotaSheet()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prompt Dispatch Choice Bottom Sheet (Antigravity Queue Choice) -->
+  <div id="queueChoiceBackdrop" class="sheet-backdrop hidden" onclick="closeQueueChoiceSheet(event)">
+    <div class="sheet-card" onclick="event.stopPropagation()">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <h3 class="sheet-title">A task is running</h3>
+        <p class="sheet-subtitle">Antigravity is working on your laptop. Choose how to send this message:</p>
+      </div>
+
+      <!-- Active Background Task Preview -->
+      <div id="queueChoiceActiveBox" class="queue-choice-active-card">
+        <div class="queue-choice-active-header">
+          <span class="active-task-pulse-dot"></span>
+          <span class="queue-choice-active-tag">Running on laptop</span>
+        </div>
+        <div id="queueChoiceActivePrompt" class="queue-choice-active-prompt">Loading task...</div>
+        <div id="queueChoiceActiveStep" class="queue-choice-active-step">Evaluating code...</div>
+      </div>
+
+      <div class="sheet-options-list">
+        <button type="button" class="sheet-option-item choice-send-now" onclick="confirmTaskSend('send_now')">
+          <div class="sheet-option-info">
+            <span class="sheet-option-name" style="color: #38bdf8;">Send now</span>
+            <span class="sheet-option-desc">Send now without waiting for the current task to finish.</span>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </button>
+        <button type="button" class="sheet-option-item choice-queue" onclick="confirmTaskSend('queue')">
+          <div class="sheet-option-info">
+            <span class="sheet-option-name" style="color: #4ade80;">Add to queue</span>
+            <span class="sheet-option-desc">Save the message and send it when the session is ready.</span>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+        </button>
+        <button type="button" class="sheet-option-item choice-stop" onclick="stopActiveBackgroundProcess(true)">
+          <div class="sheet-option-info">
+            <span class="sheet-option-name" style="color: #f87171;">Stop the current task first</span>
+            <span class="sheet-option-desc">Stop the current task before sending this message.</span>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="sheet-footer">
+        <button type="button" class="btn-sheet-close" onclick="closeQueueChoiceSheet()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apple Design Fullscreen Image Preview Lightbox Modal -->
+  <div id="imageLightboxModal" class="image-lightbox-modal hidden" onclick="handleLightboxBackdropClick(event)">
+    <div class="lightbox-container">
+      <div class="lightbox-header">
+        <span id="lightboxTitle" class="lightbox-title">Image attachment</span>
+        <div class="lightbox-actions">
+          <a id="lightboxDownloadBtn" href="#" target="_blank" class="lightbox-btn-action" title="Open the original image in a new tab">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+          </a>
+          <button type="button" class="lightbox-close-btn" title="Close preview (Esc)" onclick="closeImageLightbox()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="lightbox-body">
+        <img id="lightboxImage" class="lightbox-img" src="" alt="Preview Image attachment">
+      </div>
+    </div>
+  </div>
+
+  <!-- Apple Design Bottom Sheet: Changes Review & Diff Modal -->
+  <div id="changesReviewModal" class="sheet-backdrop hidden" onclick="handleChangesModalBackdropClick(event)">
+    <div class="sheet-card changes-sheet-card" onclick="event.stopPropagation()">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-header-left">
+          <h3 class="sheet-title">Review file changes</h3>
+          <p class="sheet-subtitle">Review the diff and accept or reject changes.</p>
+        </div>
+        <div class="sheet-header-right">
+          <button id="btnModalAcceptAll" class="btn-success-sm hidden" type="button" onclick="confirmAcceptAllChanges()">Accept all</button>
+          <button id="btnModalRejectAll" class="btn-danger-sm hidden" type="button" onclick="confirmRejectAllChanges()" title="Revert tracked changes (preserves untracked files)">Revert tracked</button>
+        </div>
+      </div>
+
+      <div class="changes-modal-stats-bar">
+        <div class="changes-summary-stats">
+          <span id="modalChangesSummaryFiles" class="changes-stat-tag">0 files</span>
+          <span id="modalChangesSummaryAdd" class="changes-stat-add">+0</span>
+          <span id="modalChangesSummaryDel" class="changes-stat-del">-0</span>
+        </div>
+        <button class="btn-icon-sm" type="button" onclick="fetchChanges()" title="Reload">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div id="changesModalFilesList" class="changes-modal-body">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="sheet-footer">
+        <button type="button" class="btn-sheet-close" onclick="closeChangesModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Popup: Antigravity Account Profile -->
+  <div id="accountModalSheet" class="account-popup-backdrop hidden" onclick="handleAccountModalBackdrop(event)">
+    <div class="account-popup-card" onclick="event.stopPropagation()">
+      <div class="sheet-drag-handle"></div>
+      <div class="account-popup-header">
+        <div class="account-popup-header-info">
+          <span class="account-badge-sub">Antigravity account</span>
+          <h3 class="account-popup-title">Account profile</h3>
+        </div>
+        <button type="button" class="btn-popup-close" onclick="closeAccountModal()" aria-label="Close" title="Close">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="account-popup-body">
+        <!-- Main Profile Card with Shimmer & Avatar Animation -->
+        <div class="account-profile-box">
+          <div class="account-profile-header">
+            <div class="account-avatar-large-wrap">
+            <img id="modalAccountAvatar" class="account-avatar-large hidden" src="" alt="Account avatar">
+              <span id="modalAccountInitial" class="account-initial-large">U</span>
+              <span id="modalAccountDot" class="account-status-dot online"></span>
+            </div>
+            <div class="account-details-col">
+              <div class="account-name-row">
+                <h4 id="modalAccountName" class="account-name-text">Loading...</h4>
+                <span id="modalAccountTierBadge" class="account-tier-badge">Loading plan...</span>
+              </div>
+              <span id="modalAccountEmail" class="account-email-text">Loading account...</span>
+              <span id="modalAccountIdeStatus" class="account-ide-badge">Connected to Antigravity</span>
+            </div>
+          </div>
+
+          <!-- Quick Token Sync Strip -->
+          <div class="account-quota-sync-strip">
+            <div class="account-quota-sync-left">
+              <span class="account-quota-label">Account quota</span>
+              <div class="account-quota-values">
+                <span id="modalGeminiWeeklyVal" class="account-quota-val">-- Gemini</span>
+                <span class="account-quota-sep">·</span>
+                <span id="modalClaudeWeeklyVal" class="account-quota-val">-- Claude</span>
+              </div>
+            </div>
+            <button id="btnSyncAccountQuota" type="button" class="btn-account-sync" onclick="syncAccountTokenQuota()" title="Refresh quota from Antigravity">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+              </svg>
+              <span>Sync</span>
+            </button>
+          </div>
+        </div>
+
+        <p class="composer-options-note" style="margin: 0;">Account sign-in and switching are managed inside Antigravity on your laptop. Changes made there sync automatically.</p>
+
+        <!-- Working Laptop Action -->
+        <div class="account-sheet-actions">
+          <div class="account-action-row">
+            <button id="btnLaunchAccountIde" type="button" class="btn-account-action primary" onclick="openAntigravityOnLaptop()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
+              <span>Open Antigravity on laptop</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="account-popup-footer">
+        <button type="button" class="btn-popup-close-action" onclick="closeAccountModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container (Modern Floating) -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="/static/app.js?v=10.10"></script>
+  <script src="/static/connect.js?v=10.7"></script>
+</body>
+</html>

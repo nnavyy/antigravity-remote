@@ -1,0 +1,24 @@
+{
+  "viewport": [
+    390,
+    844
+  ],
+  "visible_before_reload": true,
+  "visible_after_reload": true,
+  "native_choices": [
+    "read-once",
+    "deny"
+  ],
+  "touch_hit_test_passed": true,
+  "refresh_preserved_focus": true,
+  "keyboard_tabs": [
+    "Chat",
+    "Changes",
+    "Usage",
+    "Projects",
+    "Connect",
+    "Chat"
+  ],
+  "connection_retry_opens_paired_chat": true,
+  "resolved_cards_hidden": true
+}

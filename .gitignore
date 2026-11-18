@@ -1,0 +1,78 @@
+# ==============================================================================
+# Antigravity Mobile Bridge & Autonomous AI - Git Ignore Policy
+# ==============================================================================
+
+# 1. Dynamic Runtime & Tunnel State (Prevents frequent dirty git status)
+tunnel_url.txt
+tunnel_url*.txt
+*.pid
+*.tmp
+*.bak
+*.swp
+*~
+*.qr.png
+
+# 2. Local Tokens, Credentials & Environment Secrets
+.env
+.env.*
+!.env.example
+data/
+*.token
+*_token.txt
+*.key
+*.pem
+*.cert
+
+# 3. Logs & Diagnostics
+logs/
+*.log
+*.log.*
+
+# 4. Runtime Brain Caches & Scratch Data
+conversations/
+scratch/
+uploads/
+debug_*.py
+debug_overlay.py
+
+# 5. Rust Build Artifacts, Compiled Binaries & Tunnel Binary
+target/
+antigravity-bridge.exe
+cloudflared.exe
+*.pdb
+*.obj
+*.o
+*.dll
+*.so
+*.dylib
+
+# 6. Python Virtual Environments & Caches
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# 7. OS Metadata & Editor Configurations
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.cursor/
+.gemini/
+
+# Local architecture exploration cache
+graphify-out/
