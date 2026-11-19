@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use, reference, or build upon this software, please cite the original author as below."
+title: "Antigravity Remote"
+abstract: "Independent Windows/Rust local remote companion for controlling a signed-in Google Antigravity laptop from a paired phone over same-Wi-Fi LAN or Tailscale."
+authors:
+  - given-names: "Nanda Zhafran"
+    family-names: "Mahendra"
+    alias: "nnavyy"
+version: "2.0.0-dev.6"
+date-released: "2026-11-19"
+license: "MIT"
+repository-code: "https://github.com/nnavyy/antigravity-remote"
+url: "https://github.com/nnavyy/antigravity-remote"

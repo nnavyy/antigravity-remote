@@ -69,7 +69,7 @@ sequenceDiagram
 
 The [November 19 corrective audit and pre-submission follow-up](docs/AUDIT_FOLLOWUP.md) describe the verified fixes and engineering scope. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results, and remaining hardware and account checks.
 
-Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.5/antigravity-remote-source.zip) to build this version on Windows.
+Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.6/antigravity-remote-source.zip) to build this version on Windows.
 
 ## Start the bridge
 
@@ -98,6 +98,10 @@ node --test tests/client.test.cjs
 
 The [development report](docs/ANTIGRAVITY_DEVELOPMENT_HANDOFF.md) records verified behavior, test limitations and commands for the optional signed-in checks. The live chat checks use the signed-in account's model quota.
 
-## Author & License
+## Author, Attribution & License
 
-Created by **Nanda Zhafran Mahendra** · Released under the MIT License (`LICENSE`).
+Created by **Nanda Zhafran Mahendra** ([@nnavyy](https://github.com/nnavyy)).
+
+- **License:** Released under the [MIT License](LICENSE) (`Copyright (c) 2026 Nanda Zhafran Mahendra (@nnavyy)`). Under the MIT License, any clone, fork, redistribution, or substantial copy must preserve this copyright and permission notice.
+- **Attribution & Citation:** See [NOTICE](NOTICE) and [CITATION.cff](CITATION.cff) (or use **Cite this repository** on GitHub) when referencing or building upon this project.
+- **Community Standards:** Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
