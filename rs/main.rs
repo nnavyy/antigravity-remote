@@ -53,6 +53,7 @@ pub struct AppState {
     pub ws_state: WorkspaceState,
     git_actions: tokio::sync::Mutex<()>,
     pub tx: broadcast::Sender<String>,
+    pairing_epoch: tokio::sync::watch::Sender<()>,
     pub task_queue: Mutex<Vec<Value>>,
     pub active_tasks: Mutex<HashMap<String, Value>>,
     pub current_active_task: Mutex<Option<Value>>,
@@ -176,6 +177,7 @@ async fn main() {
         ws_state: WorkspaceState::new(root.clone()),
         git_actions: tokio::sync::Mutex::new(()),
         tx,
+        pairing_epoch: tokio::sync::watch::channel(()).0,
         task_queue: Mutex::new(saved_queue),
         active_tasks: Mutex::new(HashMap::new()),
         current_active_task: Mutex::new(None),
@@ -557,6 +559,7 @@ async fn api_pairing_reset(
             .into_response();
     }
     load_token(&state.root, true);
+    state.pairing_epoch.send_replace(());
     if let Err(e) = save_settings(&state.root, json!({"require_lan_pin":true})) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1159,17 +1162,24 @@ async fn api_conversations_create(
         })
         .unwrap_or_default();
 
-    let ws_name = state
-        .ws_state
-        .get_active_path()
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Autonomous AI")
-        .to_string();
-
-    let mut conv = state
-        .conv_mgr
-        .create_conversation(title, &ws_name, skills, initial_prompt);
+    let workspace = body["workspace_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.ws_state.get_active_path());
+    if !workspace.is_dir() || !state.ws_state.permits(&workspace) {
+        return Json(json!({"status":"error","message":"The draft project is unavailable."}));
+    }
+    let offline_id = match body.get("offline_draft_id") {
+        None => None,
+        Some(v) => match v.as_str().and_then(|v| uuid::Uuid::parse_str(v).ok()) {
+            Some(id) => Some(id),
+            None => return Json(json!({"status":"error","message":"Invalid draft identifier."})),
+        },
+    };
+    let mut conv =
+        state
+            .conv_mgr
+            .create_conversation(title, &workspace, skills, initial_prompt, offline_id);
     let cid = conv
         .get("id")
         .and_then(|v| v.as_str())
@@ -1180,7 +1190,7 @@ async fn api_conversations_create(
     }
     if let Err(e) = state.conv_mgr.update_metadata(
         &cid,
-        json!({"workspace_path":state.ws_state.get_active_path(), "workspace":ws_name, "title":conv["title"]}),
+        json!({"workspace_path":conv["workspace_path"], "workspace":conv["workspace"], "title":conv["title"]}),
     ) {
         return Json(json!({"status":"error","message":e.to_string()}));
     }
@@ -1523,7 +1533,17 @@ async fn dispatch_prompt_to_antigravity(
         .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    match tokio::time::timeout(Duration::from_secs(25), cmd.output()).await {
+    let child = match cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            return json!({"status":"error","code":"delivery_not_started","message":format!("Could not start Antigravity agentapi: {e}")})
+        }
+    };
+    match tokio::time::timeout(Duration::from_secs(25), child.wait_with_output()).await {
         Ok(Ok(out)) => {
             let result = parse_agentapi_output(&out.stdout, &out.stderr, out.status.success());
             match result {
@@ -1541,11 +1561,13 @@ async fn dispatch_prompt_to_antigravity(
                     }
                     json!({"status":"ok","agentapi_success":true,"logs":["Antigravity acknowledged the message."]})
                 }
-                Err(message) => json!({"status":"error","message":message}),
+                Err(message) => {
+                    json!({"status":"error","code":"delivery_uncertain","message":message})
+                }
             }
         }
         Ok(Err(e)) => {
-            json!({"status":"error","message":format!("Could not start Antigravity agentapi: {e}")})
+            json!({"status":"error","code":"delivery_uncertain","message":format!("Could not read the Antigravity acknowledgement: {e}")})
         }
         Err(_) => {
             json!({"status":"error","code":"delivery_uncertain","message":"Antigravity did not acknowledge within 25 seconds. Check the IDE before retrying."})
@@ -1856,16 +1878,17 @@ async fn api_tasks_submit_inner(
         .unwrap_or("")
         .trim()
         .to_string();
-    let images: Vec<String> = payload
-        .get("images")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-
+    let attachments = match acp::resolve_images(&state.root, &payload["images"]) {
+        Ok(images) => images,
+        Err(message) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({"detail":message}))).into_response()
+        }
+    };
+    let images: Vec<String> = attachments
+        .iter()
+        .map(|(path, _)| path.to_string_lossy().into_owned())
+        .collect();
+    payload["images"] = json!(images);
     if prompt.is_empty() && images.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -1898,7 +1921,7 @@ async fn api_tasks_submit_inner(
         return (StatusCode::BAD_REQUEST, Json(json!({"detail":"The session project is unavailable or outside the allowed folders."}))).into_response();
     }
     let workspace = match workspace.canonicalize() {
-        Ok(path) => path,
+        Ok(path) => workspaces::strip_windows_prefix(path),
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -1907,7 +1930,7 @@ async fn api_tasks_submit_inner(
                 .into_response()
         }
     };
-    if metadata["workspace_path"].is_null() {
+    if metadata["workspace_path"] != json!(workspace) {
         if let Err(e) = state
             .conv_mgr
             .update_metadata(&cid, json!({"workspace_path":workspace}))
@@ -1962,7 +1985,7 @@ async fn api_tasks_submit_inner(
     payload["execution_target"] = json!(execution_target);
     payload["_use_rpc"] = json!(catalog["connected"] == true && execution_target == "ide");
     if execution_target == "cli" {
-        match acp::image_blocks(&state.root, &payload["images"]) {
+        match acp::image_blocks(&attachments) {
             Ok(images) => payload["_acp_images"] = json!(images),
             Err(message) => {
                 return (StatusCode::BAD_REQUEST, Json(json!({"detail":message}))).into_response()
@@ -2099,10 +2122,13 @@ async fn api_tasks_submit_inner(
                     task["workspace_path"]
                         .as_str()
                         .and_then(|p| Path::new(p).canonicalize().ok())
-                        .is_some_and(|p| p.starts_with(&workspace) || workspace.starts_with(p))
+                        .is_some_and(|p| {
+                            let p = workspaces::strip_windows_prefix(p);
+                            p.starts_with(&workspace) || workspace.starts_with(p)
+                        })
                 })
             {
-                return (StatusCode::CONFLICT, Json(json!({"detail":"A task is already using this project. Queue the next task to avoid overlapping edits."}))).into_response();
+                return (StatusCode::CONFLICT, Json(json!({"code":"workspace_busy","detail":"A task is already using this project. Queue the next task to avoid overlapping edits."}))).into_response();
             }
             act.insert(cid.clone(), task_info.clone());
         }
@@ -2125,7 +2151,7 @@ async fn api_tasks_submit_inner(
         state.broadcast_json(json!({"type":"TASK_DISPATCH_FAILED", "conversation_id":cid, "message":dispatch_res["message"]}));
         return (
             if dispatch_res["code"] == "model_unavailable" { StatusCode::CONFLICT } else { StatusCode::BAD_GATEWAY },
-            Json(json!({"detail":dispatch_res["message"], "status":"error", "code":dispatch_res.get("code").cloned().unwrap_or(Value::Null)})),
+            Json(json!({"detail":dispatch_res["message"], "status":"error", "code":dispatch_res.get("code").cloned().unwrap_or_else(|| json!("delivery_not_started"))})),
         )
             .into_response();
     }
@@ -2559,13 +2585,29 @@ async fn api_queue_dispatch(
                 .find(|t| t["id"].as_str() == Some(task_id.as_str()))
             {
                 item["status"] = json!("queued");
-                // Entitlement rejection happens before native execution. A later
-                // subscription refresh may make this same queued model usable.
-                if body["code"] == "model_unavailable" {
+                // Pre-upgrade receipts stored some pre-dispatch failures without a code.
+                let old_pre_dispatch = body["code"].is_null()
+                    && body["detail"].as_str().is_some_and(|s| {
+                        s.starts_with("A task is already using this project.")
+                            || s.starts_with("Antigravity language server is unavailable.")
+                            || s.starts_with("Antigravity agentapi executable not found.")
+                    });
+                if old_pre_dispatch
+                    || matches!(
+                        body["code"].as_str(),
+                        Some("model_unavailable" | "workspace_busy" | "delivery_not_started")
+                    )
+                {
                     item["dispatch_request_id"] = json!(uuid::Uuid::new_v4().to_string());
                 }
             }
-            let _ = state.persist_queue(&queue);
+            if let Err(e) = state.persist_queue(&queue) {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"detail":format!("Could not save the queue retry state: {e}")})),
+                )
+                    .into_response();
+            }
             return response;
         }
         if let Err(e) = state.persist_queue(&queue) {
@@ -2614,7 +2656,7 @@ fn launch_antigravity_ide(workspace: Option<&Path>) -> Result<(), String> {
 }
 
 async fn api_ide_launch(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let ws = state.ws_state.get_active_path();
+    let ws = state.selected_workspace();
     if let Err(e) = launch_antigravity_ide(Some(&ws)) {
         return Json(json!({"status":"error", "message":e}));
     }
@@ -2636,8 +2678,16 @@ async fn api_ide_open_file(
         .get("filepath")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let path = state.ws_state.get_active_path().join(fp);
-    if fp.is_empty() || !path.exists() || !state.ws_state.permits(&path) {
+    let workspace = state.selected_workspace();
+    let path = workspace.join(fp);
+    if fp.is_empty()
+        || !path
+            .canonicalize()
+            .ok()
+            .zip(workspace.canonicalize().ok())
+            .is_some_and(|(p, w)| p.starts_with(w))
+        || !state.ws_state.permits(&path)
+    {
         return Json(
             json!({"status":"error", "message":"File is missing or outside the allowed project directories."}),
         );
@@ -2682,7 +2732,7 @@ async fn api_command_exec(
     let started = std::time::Instant::now();
     let mut cmd = tokio::process::Command::new("powershell");
     cmd.args(["-NoProfile", "-Command", command])
-        .current_dir(state.ws_state.get_active_path());
+        .current_dir(state.selected_workspace());
     cmd.kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
@@ -2731,7 +2781,6 @@ fn validate_image_magic_bytes(bytes: &[u8]) -> bool {
         || (bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP")
         || bytes.starts_with(b"GIF87a")
         || bytes.starts_with(b"GIF89a")
-        || bytes.starts_with(b"BM")
 }
 
 async fn api_upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
@@ -2762,17 +2811,17 @@ async fn api_upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
                 .into_response()
         }
     };
-    if data.len() > 15 * 1024 * 1024 {
+    if data.len() > 12 * 1024 * 1024 {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"detail": "File size exceeds the 15 MB limit."})),
+            Json(json!({"detail": "File size exceeds the 12 MiB limit."})),
         )
             .into_response();
     }
     if !validate_image_magic_bytes(&data) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"detail": "Upload a valid image file (PNG, JPEG, WebP, GIF, or BMP)."})),
+            Json(json!({"detail": "Upload a valid image file (PNG, JPEG, WebP or GIF)."})),
         )
             .into_response();
     }
@@ -2782,10 +2831,8 @@ async fn api_upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
         "jpg"
     } else if data.starts_with(b"RIFF") {
         "webp"
-    } else if data.starts_with(b"GIF") {
-        "gif"
     } else {
-        "bmp"
+        "gif"
     };
     let fname = format!("{}.{}", uuid::Uuid::new_v4().simple(), extension);
     let save_path = state.root.join("uploads").join(&fname);
@@ -2832,13 +2879,21 @@ async fn api_clipboard_set() -> Response {
 
 // ─── WebSocket Endpoint (/ws) ────────────────────────────────
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    axum::Extension(token): axum::Extension<security::WsPairingToken>,
+) -> impl IntoResponse {
     ws.max_message_size(64 * 1024)
         .max_frame_size(64 * 1024)
-        .on_upgrade(move |socket| handle_ws(socket, state))
+        .on_upgrade(move |socket| handle_ws(socket, state, token.0))
 }
 
-async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
+async fn handle_ws(socket: WebSocket, state: Arc<AppState>, connected_token: String) {
+    let mut pairing_epoch = state.pairing_epoch.subscribe();
+    if load_token(&state.root, false) != connected_token {
+        return;
+    }
     let (mut sender, mut receiver) = socket.split();
     let mut bcast_rx = state.tx.subscribe();
 
@@ -2847,7 +2902,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
     let active_conv = active_id
         .as_deref()
         .and_then(|cid| state.conv_mgr.get_conversation(cid));
-    let init_changes = WorkspaceState::get_git_changes(&state.ws_state.get_active_path());
+    let init_changes = WorkspaceState::get_git_changes(&state.selected_workspace());
     let telemetry = state.monitor.get_telemetry();
     let token_quota = state.monitor.get_token_quota_stats().await;
     let account = state.monitor.get_user_account_info().await;
@@ -2874,16 +2929,20 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
         "queue_count": q_list.len(),
         "changes": init_changes,
     });
+    if pairing_epoch.has_changed().unwrap_or(true) {
+        return;
+    }
     if let Ok(s) = serde_json::to_string(&init_msg) {
         let _ = sender.send(Message::Text(s)).await;
     }
 
     let state_for_recv = state.clone();
-    let connected_token = load_token(&state.root, false);
     let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
     let mut last_pong = tokio::time::Instant::now();
     loop {
         tokio::select! {
+            biased;
+            _ = pairing_epoch.changed() => break,
             _ = heartbeat.tick() => {
                 if load_token(&state.root, false) != connected_token || last_pong.elapsed() > Duration::from_secs(45) { break; }
                 if sender.send(Message::Ping(Vec::new())).await.is_err() { break; }
@@ -2915,7 +2974,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                                 }
                             }
                             "GET_CHANGES" => {
-                                let c = WorkspaceState::get_git_changes(&state_for_recv.ws_state.get_active_path());
+                                let c = WorkspaceState::get_git_changes(&state_for_recv.selected_workspace());
                                 let reply = json!({"type": "CHANGES_UPDATED", "changes": c});
                                 if let Ok(s) = serde_json::to_string(&reply) {
                                     let _ = sender.send(Message::Text(s)).await;
@@ -2932,7 +2991,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                                 }
                             }
                             "LAUNCH_IDE" => {
-                                let result = launch_antigravity_ide(Some(&state_for_recv.ws_state.get_active_path()));
+                                let result = launch_antigravity_ide(Some(&state_for_recv.selected_workspace()));
                                 let reply = json!({"type": "NOTIFICATION", "message": result.err().unwrap_or_else(|| "Antigravity opened on the laptop.".into())});
                                 if let Ok(s) = serde_json::to_string(&reply) {
                                     let _ = sender.send(Message::Text(s)).await;

@@ -3,6 +3,55 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
+test('a new offline message survives reconnect and an earlier rejected draft', async () => {
+  const calls = [];
+  const context = client(async (url, options) => {
+    const payload = JSON.parse(options.body);
+    calls.push({url, payload});
+    if (payload.conversation_id === 'removed') {
+      return Response.json({error:'Conversation was deleted.'}, {status:404});
+    }
+    return Response.json(url === '/api/conversations' ? {id:'restored'} : {status:'ok'});
+  });
+  const storage = new Map();
+  context.localStorage = {getItem:k=>storage.get(k)||null, setItem:(k,v)=>storage.set(k,v), removeItem:k=>storage.delete(k)};
+  const input = {value:'My offline message',style:{}};
+  context.document.getElementById = id => id === 'taskInput' ? input : null;
+  context.document.querySelector = () => null;
+  context.navigator.onLine = false;
+  vm.runInContext(`addOptimisticUserMessage = () => {}; updateProcessingStateUI = () => {}; renderImagePreviews = () => {};
+    state.currentWorkspace = {path:'fixture-project'}; state.activeConversationId = null;
+    saveToOfflineQueue({prompt:'older draft',conversation_id:'removed'});`, context);
+  await vm.runInContext('executeSubmitTask()',context);
+  const drafts = JSON.parse(storage.get('antigravity_offline_queue'));
+  assert.equal(drafts.length,2);
+  assert.equal(drafts[1].workspace_path,'fixture-project');
+  assert.equal(input.value,'');
+  assert.equal(calls.length,0);
+  context.navigator.onLine = true;
+  await vm.runInContext('flushOfflineQueue()',context);
+  assert.deepEqual(calls.map(call=>call.url),['/api/tasks/submit','/api/conversations','/api/tasks/submit']);
+  assert.equal(calls[1].payload.offline_draft_id,drafts[1].request_id);
+  assert.equal(calls[2].payload.conversation_id,'restored');
+  const kept = JSON.parse(storage.get('antigravity_offline_queue'));
+  assert.equal(kept.length,1);
+  assert.equal(kept[0].delivery_error,'Conversation was deleted.');
+});
+
+test('a slow conversation fetch cannot overwrite the tab opened after it', async () => {
+  const pending = new Map();
+  const context = client(url => new Promise(resolve => pending.set(url,resolve)));
+  context.drawn = [];
+  vm.runInContext('fetchModels = () => {}; ensureConvoTabOpen = () => {}; renderActiveConversation = value => drawn.push(value.id);',context);
+  const first = vm.runInContext("loadConversation('first')",context);
+  const second = vm.runInContext("loadConversation('second')",context);
+  pending.get('/api/conversations/second')(Response.json({id:'second'}));
+  await second;
+  pending.get('/api/conversations/first')(Response.json({id:'first'}));
+  await first;
+  assert.deepEqual(context.drawn,['second']);
+});
+
 function client(fetch) {
   const context = vm.createContext({
     console, fetch, AbortController, AbortSignal, setTimeout, clearTimeout,
@@ -376,7 +425,7 @@ test('flushing the offline queue preserves tasks added during delivery', async (
   let complete;
   const response = new Promise(resolve => { complete = resolve; });
   const context = client(() => response);
-  const storage = new Map([['antigravity_offline_queue', JSON.stringify([{ prompt: 'first', queued_at: 'before' }])]]);
+  const storage = new Map([['antigravity_offline_queue', JSON.stringify([{ prompt: 'first', conversation_id:'original', queued_at: 'before' }])]]);
   context.localStorage = {
     getItem: key => storage.get(key) || null,
     setItem: (key, value) => storage.set(key, value),
@@ -1042,4 +1091,10 @@ test('initial project labels and the message field identify their purpose withou
     assert.doesNotMatch(html.match(new RegExp('id="'+id+'"[^>]*>([^<]*)'))[1],/Autonomous AI/);
   }
   assert.match(html,/<textarea[^>]*id="taskInput"[^>]*aria-label="Message"/);
+});
+test('offline drafts preserve the saved model for backend validation and markdown links stay single', () => {
+  const ctx = client();
+  vm.runInContext('state.selectedModel="saved-id";state.selectedModelTarget="cli";state.modelCatalogConnected=false',ctx);
+  assert.equal(vm.runInContext('taskModelOptions(true).model',ctx),'saved-id');
+  assert.equal(vm.runInContext('renderMarkdown("[https://example.com](https://example.com)")',ctx).match(/<a /g).length,1);
 });

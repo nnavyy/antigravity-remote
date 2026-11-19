@@ -9,9 +9,15 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--output", type=Path, default=ROOT / "dist/antigravity-development-handoff.zip")
+    parser.add_argument("--output", type=Path, default=ROOT / "dist/antigravity-remote-source.zip")
     args = parser.parse_args()
     names = """
+        docs/AUDIT_FOLLOWUP.md docs/review/audit-followup/PLAN.md run_background_log.ps1
+        docs/review/audit-followup/verification.json docs/review/audit-followup/desktop-after.json
+        docs/review/audit-followup/desktop-live.json docs/review/audit-followup/cli-live.json
+        docs/review/audit-followup/permission-live.json docs/review/audit-followup/permission-browser.json
+        docs/review/audit-followup/git-workspaces.json docs/review/audit-followup/load.json
+        docs/review/audit-followup/six-findings.json docs/review/audit-followup/browser/model-browser.json
         .gitignore Cargo.toml Cargo.lock LICENSE build.bat publish_build.ps1 Start_Antigravity_Remote.bat
         open_connect.ps1 Cek_Link_HP.bat start_background_bridge.vbs run_background.bat
         rs/acp.rs rs/acp/permissions.rs rs/conversations.rs rs/main.rs rs/models.rs rs/receipts.rs
@@ -39,17 +45,21 @@ def main():
     reviewer_readme = ROOT / "docs/review/development-handoff/REVIEWER_README.md"
     entries["README.md"] = reviewer_readme if reviewer_readme.is_file() else ROOT / "README.md"
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    payloads = {name: source.read_bytes() for name, source in entries.items()}
+    if reviewer_readme.is_file():
+        # The reviewer guide lives two levels below docs in the working tree.
+        payloads["README.md"] = payloads["README.md"].replace(b"](../../", b"](docs/")
     with NamedTemporaryFile(dir=args.output.parent, delete=False, suffix=".tmp") as handle:
         stage = Path(handle.name)
     try:
         with ZipFile(stage, "w", ZIP_DEFLATED) as archive:
-            for name, source in sorted(entries.items()):
-                archive.write(source, name)
+            for name, data in sorted(payloads.items()):
+                archive.writestr(name, data)
         with ZipFile(stage) as archive:
             if sorted(archive.namelist()) != sorted(entries) or archive.testzip():
                 raise ValueError("Source archive did not match the file list")
-            for name, source in entries.items():
-                if archive.read(name) != source.read_bytes():
+            for name, data in payloads.items():
+                if archive.read(name) != data:
                     raise ValueError(f"Source verification failed for {name}")
         stage.replace(args.output)
         print(f"Verified {len(entries)} files in {args.output}")

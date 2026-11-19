@@ -191,7 +191,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .composer-options[open] { max-height: min(45dvh, 360px); overflow-y: auto; }
 .composer-options .btn-tab-action { margin: 8px 0; min-height: 44px; }
 .session-main-card:has(.composer-options[open]),
-.session-main-card:has(#userAgreementCard:not(.hidden)),
+.session-main-card:has(#toolPermissions:not(.hidden)),
+  .session-main-card:has(#unsentDrafts:not(.hidden)),
+  .session-main-card:has(#userAgreementCard:not(.hidden)),
 .session-main-card:has(#queueBanner:not(.hidden)),
 .session-main-card:has(#activeTaskBanner:not(.hidden)) {
   height: auto;
@@ -222,6 +224,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 820px) {
   .session-main-card { height: calc(100dvh - 154px); min-height: 400px; border-radius: 14px; }
   .session-main-card:has(.composer-options[open]),
+  .session-main-card:has(#toolPermissions:not(.hidden)),
+  .session-main-card:has(#unsentDrafts:not(.hidden)),
   .session-main-card:has(#userAgreementCard:not(.hidden)),
   .session-main-card:has(#queueBanner:not(.hidden)),
   .session-main-card:has(#activeTaskBanner:not(.hidden)) {

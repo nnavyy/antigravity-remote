@@ -291,7 +291,20 @@ fn same_origin(headers: &HeaderMap) -> bool {
             .is_ok_and(|expected| expected.origin() == url.origin())
 }
 
-fn pairing_rate_limited(ip: IpAddr) -> bool {
+fn pairing_client(peer: IpAddr, headers: &HeaderMap) -> IpAddr {
+    if is_loopback(peer) {
+        if let Some(client) = headers
+            .get("cf-connecting-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+        {
+            return normalize_ip(client);
+        }
+    }
+    normalize_ip(peer)
+}
+
+fn pairing_rate_limited(ip: IpAddr, invalid: bool) -> bool {
     static ATTEMPTS: OnceLock<Mutex<HashMap<IpAddr, (Instant, u32)>>> = OnceLock::new();
     let mut attempts = ATTEMPTS
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -301,14 +314,21 @@ fn pairing_rate_limited(ip: IpAddr) -> bool {
     if attempts.len() >= 2048 && !attempts.contains_key(&ip) {
         return true;
     }
-    let entry = attempts.entry(ip).or_insert((Instant::now(), 0));
-    entry.1 += 1;
-    entry.1 > 10
+    if attempts.get(&ip).is_some_and(|(_, count)| *count >= 10) {
+        return true;
+    }
+    if invalid {
+        attempts.entry(ip).or_insert((Instant::now(), 0)).1 += 1;
+    }
+    false
 }
+
+#[derive(Clone)]
+pub struct WsPairingToken(pub String);
 
 pub async fn security_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    req: Request<Body>,
+    mut req: Request<Body>,
     next: Next,
 ) -> Response {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -326,7 +346,7 @@ pub async fn security_middleware(
 
     // 1. Network boundary check
     let allowed_net = if proxied {
-        settings.remote_mode == "tunnel"
+        is_loopback(client_ip) && settings.remote_mode == "tunnel"
     } else {
         is_lan(client_ip)
             || (is_tailscale(client_ip)
@@ -386,9 +406,12 @@ pub async fn security_middleware(
                 .and_then(|v| v.strip_prefix("Bearer "))
         });
     if (path == "/pair" || candidate.is_some())
-        && !candidate.is_some_and(|c| token_matches(c, &token))
+        && !candidate.is_some_and(|c| constant_time_eq(c.as_bytes(), token.as_bytes()))
         && !is_owner_request(addr, &headers)
-        && pairing_rate_limited(client_ip)
+        && pairing_rate_limited(
+            pairing_client(client_ip, &headers),
+            !candidate.is_some_and(|c| token_matches(c, &token)),
+        )
     {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -457,6 +480,9 @@ pub async fn security_middleware(
             .into_response();
     }
 
+    if path == "/ws" {
+        req.extensions_mut().insert(WsPairingToken(token.clone()));
+    }
     let mut resp = next.run(req).await;
     resp.headers_mut()
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
@@ -516,9 +542,27 @@ mod tests {
     fn pin_attempts_are_bounded() {
         let ip = "203.0.113.99".parse().unwrap();
         for _ in 0..10 {
-            assert!(!pairing_rate_limited(ip));
+            assert!(!pairing_rate_limited(ip, true));
         }
-        assert!(pairing_rate_limited(ip));
+        assert!(pairing_rate_limited(ip, true));
+    }
+
+    #[test]
+    fn tunnel_pairing_uses_the_local_connectors_client_identity() {
+        let mut headers = HeaderMap::new();
+        let local = "127.0.0.1".parse().unwrap();
+        let direct = "192.168.2.10".parse().unwrap();
+        headers.insert("cf-connecting-ip", "203.0.113.10".parse().unwrap());
+        let first = pairing_client(local, &headers);
+        assert_eq!(pairing_client(direct, &headers), direct);
+        headers.insert("cf-connecting-ip", "203.0.113.11".parse().unwrap());
+        let second = pairing_client(local, &headers);
+        assert_ne!(first, second);
+        for _ in 0..10 {
+            assert!(!pairing_rate_limited(first, true));
+        }
+        assert!(pairing_rate_limited(first, false));
+        assert!(!pairing_rate_limited(second, false));
     }
 
     #[test]

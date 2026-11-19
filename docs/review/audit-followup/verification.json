@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-19",
+  "platform": "Windows",
+  "scope": "One signed-in laptop, disposable project fixtures and emulated Chrome viewports",
+  "baseline_dev_1": {
+    "rust": 36,
+    "browser_client": 56,
+    "packaged_server": 50
+  },
+  "corrected_dev_2": {
+    "rust": 37,
+    "browser_client": 59,
+    "packaged_server": 57
+  },
+  "passed": [
+    "Rust formatting",
+    "Clippy with warnings denied",
+    "JavaScript and Python syntax",
+    "Rust release build",
+    "Windows launcher publish and background log rotation",
+    "legacy Python compatibility launch and ASGI retirement",
+    "standalone locked build from a fresh public checkout with corrective sources",
+    "clean binary health, homepage and pending-permissions route"
+  ],
+  "reviewed_binary": {
+    "bytes": 4404224,
+    "sha256": "39053465c16e1eb90f4f5954f0ada884e0fe90877413a7daabd6d0ad107e17b0"
+  },
+  "clean_build": {
+    "locked": true,
+    "offline_dependency_cache": true,
+    "health": "rust-axum",
+    "dashboard_http": 200,
+    "pending_permissions_http": 200,
+    "sha256": "0b8aaf408f21202a91a720b98c675e546dbeada3e3c88aa571cb924682bd3e1d"
+  },
+  "initially_reproduced": [
+    "IDE prompt included a browser URL instead of the uploaded file path",
+    "Offline model selection threw before saving a draft"
+  ],
+  "browser_teardown": "An initial run completed its assertions but timed out waiting for Chrome to exit. The harness now waits for the Browser.close acknowledgement.",
+  "unverified": [
+    "Physical iOS/Android QR, keyboard and microphone",
+    "Live Internet tunnel",
+    "Subscription matrix across separate billing accounts",
+    "Installed CLI permission prompt under a policy requiring approval",
+    "Long-duration and multi-tenant capacity",
+    "Official product acceptance"
+  ]
+}

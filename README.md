@@ -2,9 +2,9 @@
 
 This is a Windows prototype for controlling one signed-in laptop from a phone. The laptop runs the agent and serves the dashboard. The source includes the Rust bridge, browser UI, Windows launchers and test fixtures.
 
-The [release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results and remaining hardware and account checks. This is an independent development prototype.
+The [November 19 corrective audit](docs/AUDIT_FOLLOWUP.md) covers this revision. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results and remaining hardware and account checks. This is an independent development prototype.
 
-Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.1/antigravity-remote-source.zip) to build this version on Windows.
+Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.2/antigravity-remote-source.zip) to build this version on Windows.
 
 ## Start the bridge
 

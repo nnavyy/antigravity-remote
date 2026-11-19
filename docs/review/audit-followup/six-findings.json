@@ -1,0 +1,89 @@
+{
+  "binary_sha256": "39053465c16e1eb90f4f5954f0ada884e0fe90877413a7daabd6d0ad107e17b0",
+  "stale_revert": {
+    "http": 409,
+    "result": "error",
+    "code": "stale_review",
+    "confirmation": "Revert changes to:\nnote.txt\n\nThe file will be restored to HEAD.\n\nProject: <fixture>",
+    "request_fields": [
+      "file_path",
+      "revision",
+      "scope",
+      "workspace_path"
+    ],
+    "displayed_status": "modified",
+    "status_before_post": "M moved.txt\n?? note.txt",
+    "replacement_exists_after": true,
+    "moved_file_preserved": true
+  },
+  "same_status_binary_edit": {
+    "blocked_actions": [
+      "accept file",
+      "accept all",
+      "reject file",
+      "reject all"
+    ],
+    "missing_revision_http": 428
+  },
+  "bulk_accept": {
+    "http": 409,
+    "result": "error",
+    "code": "divergent_index",
+    "confirmation": "Accept all changes in this project?\n\nAll file changes will be committed to Git.\n\nProject: <fixture>",
+    "request_fields": [
+      "revision",
+      "scope",
+      "workspace_path"
+    ],
+    "index_before": "work kept only in the index",
+    "index_after": "work kept only in the index",
+    "head_unchanged": true,
+    "pending_after": [
+      "MM note.txt"
+    ]
+  },
+  "rejected_hook": {
+    "http": 409,
+    "head_index_worktree_preserved": true,
+    "retry_http": 200
+  },
+  "diff_count": {
+    "git_numstat": "250\t0\tnote.txt",
+    "bridge_insertions": 250,
+    "untracked_insertions": 125,
+    "combined_insertions": 375,
+    "both_previews_truncated": true
+  },
+  "bound_chat_project_label": {
+    "visible_header": "\u00b7 target: project-a",
+    "client_review_project": "project-a",
+    "server_conversation_project": "project-a"
+  },
+  "unconfigured_tunnel": {
+    "settings_http": 200,
+    "reported_mode": "tunnel",
+    "primary_matches_lan": false,
+    "pair_host_matches_lan": false,
+    "qr_offered": false
+  },
+  "windows_link_helper": {
+    "unavailable_shown": true
+  },
+  "configured_tunnel_control": {
+    "pair_host_matches_configuration": true,
+    "qr_offered": true
+  },
+  "git_unavailable": {
+    "actual_git_status": "M note.txt\n?? extra.txt",
+    "http": 503,
+    "is_git": true,
+    "change_count": null,
+    "error": "program not found"
+  },
+  "rendered_phone_ui": {
+    "browser": "chrome.exe",
+    "address_disabled": true,
+    "stale_qr_removed": true,
+    "both_changes_views_show_retry": true
+  }
+}

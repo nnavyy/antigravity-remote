@@ -8,6 +8,7 @@
 const state = {
   ws: null,
   wsConnected: false,
+  bridgeUnavailable: false,
   selectedSkills: new Set(),
   allSkills: [],
   currentPendingTask: null,
@@ -18,6 +19,7 @@ const state = {
   availableFolders: [],
   browseCurrentPath: "",
   browseRequestSeq: 0,
+  conversationLoadSeq: 0,
   browseAbortController: null,
   activeConversationId: null,
   renderedConversationId: null,
@@ -107,42 +109,89 @@ function saveToOfflineQueue(taskPayload) {
   }
 }
 
+const offlineQueueKey = "antigravity_offline_queue";
+
+function updateOfflineItem(id, patch) {
+  const latest = JSON.parse(localStorage.getItem(offlineQueueKey) || "[]");
+  const remaining = latest.flatMap(entry => entry.offline_id !== id ? [entry] : patch ? [{...entry,...patch}] : []);
+  if (remaining.length) localStorage.setItem(offlineQueueKey, JSON.stringify(remaining));
+  else localStorage.removeItem(offlineQueueKey);
+}
+
+function renderUnsentDrafts() {
+  const panel = document.getElementById("unsentDrafts");
+  if (!panel) return;
+  let failed;
+  try { failed = JSON.parse(localStorage.getItem(offlineQueueKey) || "[]").filter(item => item?.delivery_error); }
+  catch { return; }
+  panel.classList.toggle("hidden", !failed.length);
+  const list = panel.querySelector("div");
+  list.replaceChildren();
+  for (const item of failed) {
+    const reason = document.createElement("p");
+    reason.textContent = item.delivery_error;
+    const copy = document.createElement("textarea");
+    copy.readOnly = true;
+    copy.setAttribute("aria-label","Saved message to copy");
+    copy.value = [item.prompt,...(item.images || [])].join("\n");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Dismiss saved copy";
+    remove.onclick = () => {updateOfflineItem(item.offline_id,null);renderUnsentDrafts();};
+    list.append(reason,copy,remove);
+  }
+}
+
 async function flushOfflineQueue() {
-  if (state.isFlushingOfflineQueue) return;
+  if (state.isFlushingOfflineQueue || navigator.onLine === false) return;
   state.isFlushingOfflineQueue = true;
   try {
-    const raw = localStorage.getItem("antigravity_offline_queue");
-    if (!raw) return;
-    const queue = JSON.parse(raw);
-    if (!Array.isArray(queue)) throw new Error("Invalid offline queue format.");
+    const queue = JSON.parse(localStorage.getItem(offlineQueueKey) || "[]");
     if (!queue.length) return;
-    queue.forEach((item, index) => { item.offline_id ||= `${Date.now()}-${index}`; });
-    localStorage.setItem("antigravity_offline_queue", JSON.stringify(queue));
     for (const item of queue) {
-      const res = await safeFetchJson("/api/tasks/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-      if (!res.ok) {
-        showToast(res.error || "The message was not sent. Check the conversation before retrying.", "warning");
+      item.offline_id ||= createRequestId();
+      item.request_id ||= createRequestId();
+    }
+    localStorage.setItem(offlineQueueKey,JSON.stringify(queue));
+    for (const item of queue) {
+      if (item.delivery_error) continue;
+      let res;
+      if (!item.conversation_id) {
+        res = await safeFetchJson("/api/conversations", {method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({offline_draft_id:item.request_id, title:item.prompt.slice(0,60),skills:item.skills,workspace_path:item.workspace_path})});
+        if (res.ok && res.data?.id) {
+          item.conversation_id = res.data.id;
+          updateOfflineItem(item.offline_id,{conversation_id:item.conversation_id});
+        }
+      }
+      if (item.conversation_id) {
+        res = await safeFetchJson("/api/tasks/submit", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(item)});
+      }
+      if (!res?.ok || !item.conversation_id) {
+        const message = res?.error || "The saved message could not be delivered.";
+        const rejected = (res?.status >= 400 && res.status < 500 && ![401,403,408,429].includes(res.status)) ||
+          res?.code === "delivery_uncertain" || res?.code === "delivery_not_started" || res?.status === 200;
+        if (rejected) {
+          updateOfflineItem(item.offline_id,{delivery_error:message});
+          showToast("Review unsent drafts in Chat.","warning");
+          continue;
+        }
+        showToast(message,"warning");
         break;
       }
-      // Read current storage after awaiting delivery so newly queued tasks survive.
-      const latest = JSON.parse(localStorage.getItem("antigravity_offline_queue") || "[]");
-      const remaining = latest.filter(entry => entry.offline_id !== item.offline_id);
-      if (remaining.length) localStorage.setItem("antigravity_offline_queue", JSON.stringify(remaining));
-      else localStorage.removeItem("antigravity_offline_queue");
-      showToast("Offline messages sent to the laptop.", "success");
+      updateOfflineItem(item.offline_id,null);
+      showToast("Offline message sent to the laptop.","success");
     }
   } catch (err) {
-    showToast("The offline queue has not synced. Saved messages are retained.", "error");
+    showToast("The offline queue has not synced. Saved messages are retained.","error");
   } finally {
     state.isFlushingOfflineQueue = false;
+    renderUnsentDrafts();
   }
 }
 
 function initOfflineQueue() {
+  renderUnsentDrafts();
   window.addEventListener("online", () => {
     setOfflineState(false);
     flushOfflineQueue();
@@ -153,6 +202,7 @@ function initOfflineQueue() {
 }
 
 function setOfflineState(isOffline) {
+  state.bridgeUnavailable = isOffline;
   const banner = document.getElementById("offlineBanner");
   if (banner) {
     if (isOffline) {
@@ -477,11 +527,11 @@ async function testSoundBoth() {
   playNotificationChime();
 
   // 2. Request laptop speaker chime via server endpoint
-  safeFetchJson("/api/sound/laptop", {
+  const laptop = await safeFetchJson("/api/sound/laptop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "finish" }),
-  }).catch(() => {});
+  });
 
   // 3. Show a test notification if browser permission is granted
   if ("Notification" in window && Notification.permission === "granted") {
@@ -490,8 +540,9 @@ async function testSoundBoth() {
     requestPhoneNotificationPermission();
   }
 
-  showToast("Test sound played on your devices.", "info");
-  addLogEvent("Test sound played on both devices.");
+  const message = laptop.ok ? "Phone and laptop sound test requested." : "Phone sound test requested. Laptop sound is unavailable.";
+  showToast(message,"info");
+  addLogEvent(message);
 }
 
 async function handleNotificationButtonClick() {
@@ -854,7 +905,7 @@ function initWebSocket() {
 
     state.ws.onclose = () => {
       state.wsConnected = false;
-      setOfflineState(true);
+      if (navigator.onLine === false) setOfflineState(true);
       if (!state.wsReconnectTimer) {
         state.wsReconnectTimer = setTimeout(() => {
           state.wsReconnectTimer = null;
@@ -865,7 +916,7 @@ function initWebSocket() {
 
     state.ws.onerror = () => {
       state.wsConnected = false;
-      setOfflineState(true);
+      if (navigator.onLine === false) setOfflineState(true);
     };
 
     state.ws.onmessage = (event) => {
@@ -878,7 +929,7 @@ function initWebSocket() {
     };
   } catch (err) {
     state.wsConnected = false;
-    setOfflineState(true);
+    if (navigator.onLine === false) setOfflineState(true);
   }
 }
 
@@ -1287,20 +1338,22 @@ async function fetchConversations(forceRefresh = true) {
 async function refreshActiveConversation() {
   const convId = state.activeConversationId;
   if (!convId) return;
+  const seq = ++state.conversationLoadSeq;
   const res = await safeFetchJson(`/api/conversations/${convId}`);
-  if (res.ok && res.data) {
+  if (seq === state.conversationLoadSeq && convId === state.activeConversationId && res.ok && res.data) {
     renderActiveConversation(res.data);
   }
 }
 
 async function loadConversation(convId) {
   if (!convId) return;
+  const seq = ++state.conversationLoadSeq;
   state.activeConversationId = convId;
   fetchModels();
   ensureConvoTabOpen(convId);
 
   const res = await safeFetchJson(`/api/conversations/${convId}`);
-  if (res.ok && res.data) {
+  if (seq === state.conversationLoadSeq && convId === state.activeConversationId && res.ok && res.data) {
     renderActiveConversation(res.data);
   }
 }
@@ -2821,6 +2874,7 @@ function switchConversation(convId) {
 
 async function selectConversation(convId) {
   if (!convId) return;
+  const seq = ++state.conversationLoadSeq;
   state.activeConversationId = convId;
   state.renderedConversationId = null;
   ensureConvoTabOpen(convId);
@@ -2830,6 +2884,7 @@ async function selectConversation(convId) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ conversation_id: convId }),
   });
+  if (seq !== state.conversationLoadSeq || state.activeConversationId !== convId) return;
   if (res.ok && res.data && res.data.conversation) {
     renderActiveConversation(res.data.conversation);
     addLogEvent(`Switched to conversation: ${res.data.conversation.title || convId}`);
@@ -4237,8 +4292,10 @@ function currentModelSelection() {
 }
 
 function taskModelOptions(offline = false) {
-  if (offline && !state.selectedModel) {
-    return { model: null, performance: "Default", execution_target: state.modelCatalogKey === modelCatalogKey() ? state.modelCatalogBoundTarget || state.executionTarget : "auto" };
+  if (offline) {
+    return {model:state.selectedModel || null, performance:state.selectedModel ? state.selectedPerformance : "Default",
+      execution_target:(state.modelCatalogKey === modelCatalogKey() && state.modelCatalogBoundTarget) || (state.selectedModel && state.selectedModelTarget) || state.executionTarget || "auto"};
+
   }
   if (!state.modelCatalogConnected || state.modelCatalogKey !== modelCatalogKey()) {
     throw new Error("Models unavailable. Open the model picker to reconnect before sending.");
@@ -4983,13 +5040,16 @@ async function executeSubmitTask(queueMode = "auto") {
   }
 
   try {
-    const offline = !navigator.onLine || !state.wsConnected;
-    if (!offline && (!state.modelCatalogConnected || state.modelCatalogKey !== modelCatalogKey() || state.modelCatalogRequest?.key === modelCatalogKey())) await fetchModels();
+    let offline = navigator.onLine === false || state.bridgeUnavailable;
+    if (!offline && (!state.modelCatalogConnected || state.modelCatalogKey !== modelCatalogKey() || state.modelCatalogRequest?.key === modelCatalogKey())) {
+      await fetchModels();
+      offline = navigator.onLine === false || state.bridgeUnavailable;
+    }
     if (targetConversationId !== state.activeConversationId) throw new Error("The conversation changed. Review your message before sending again.");
     const modelOptions = taskModelOptions(offline);
     const attachedImageUrls = state.pendingImages.map(img => img.file_url || img.file_path);
     const attachedImagePaths = state.pendingImages.map(img => img.file_path || img.file_url);
-    if (!state.activeConversationId) {
+    if (!offline && !state.activeConversationId) {
       const created = await safeFetchJson("/api/conversations", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({title:prompt.split("\n")[0].slice(0,60) || "Review attachments", skills:Array.from(state.selectedSkills)}) });
       if (!created.ok || !created.data?.id) throw new Error(created.error || "Could not create a conversation.");
       if (state.activeConversationId && state.activeConversationId !== created.data.id) throw new Error("The conversation changed. Review your message before sending again.");
@@ -5019,7 +5079,8 @@ async function executeSubmitTask(queueMode = "auto") {
     };
 
     // Offline Guard Mode (FR-04)
-    if (!navigator.onLine || !state.wsConnected) {
+    if (offline) {
+      if (!targetConversationId && state.currentWorkspace?.path) taskPayload.workspace_path = state.currentWorkspace.path;
       const saved = saveToOfflineQueue(taskPayload);
       updateProcessingStateUI(false);
       const pendingStatus = document.querySelector('#conversationTimeline [data-optimistic="true"] .status-clean-text');
@@ -5123,6 +5184,7 @@ async function fetchToolPermissions() {
   if (seq === state.permissionFetchSeq && res.ok && Array.isArray(res.data?.tasks)) {
     renderToolPermissions(res.data.tasks.filter(task => task.request_id && task.conversation_id));
   }
+  return res.ok;
 }
 
 function renderToolPermissions(requests) {
@@ -5350,10 +5412,15 @@ function escapeQuotes(str) {
 
 // ─── Markdown Renderer (Rich, Clean, Anti-Clutter) ─────────────
 
+document.addEventListener("click", event => {
+  const link = event.target.closest?.("a[data-open-file]");
+  if (link) { event.preventDefault(); openFileInLaptop(link.dataset.openFile); }
+});
+
 function renderMarkdown(rawText) {
   if (!rawText) return "";
   try {
-    let text = String(rawText);
+    let text = String(rawText).replace(/\u0001/g, "");
 
     // Strip technical metadata headers so the chat stays clean (non-redundant-ui-ux)
     text = text
@@ -5407,6 +5474,9 @@ function renderMarkdown(rawText) {
     // *italic*
     text = text.replace(/(^|[^*])\*([^*]+)\*([^*]|$)/g, '$1<em class="md-italic">$2</em>$3');
 
+    const links = [];
+    const storeLink = html => { links.push(html); return iLink + (links.length - 1) + "\u0001"; };
+    const iLink = "\u0001link";
     // 8. Markdown links: [text](url)
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
       const cleanUrl = url.trim();
@@ -5417,15 +5487,16 @@ function renderMarkdown(rawText) {
         } catch (e) {
           // Safe fallback if the URL path is invalid or truncated
         }
-        return `<a href="#" onclick="openFileInLaptop('${escapeQuotes(decodedPath)}'); return false;" class="md-link md-file-link" title="Open this file in Antigravity">${linkText}</a>`;
+        return storeLink(`<a href="#" data-open-file="${escapeHtml(decodedPath)}" class="md-link md-file-link" title="Open this file in Antigravity">${linkText}</a>`);
       }
       if (!/^https?:\/\//i.test(cleanUrl) && !/^mailto:/i.test(cleanUrl)) return linkText;
-      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${linkText}</a>`;
+      return storeLink(`<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${linkText}</a>`);
     });
 
     // 9. Auto-link bare URLs not already inside tags
     text = text.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$2</a>');
 
+    text = text.replace(/\u0001link(\d+)\u0001/g, (token, i) => links[i] || "");
     // 10. Unordered lists (- or *)
     text = text.replace(/(?:^[-*]\s+(?:.*?)(?:\r?\n|$))+/gm, (listBlock) => {
       const items = listBlock.trim().split(/\r?\n/).map(line => {
@@ -5608,7 +5679,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Quiet fallback polling: only runs while WebSocket is disconnected
   setInterval(() => {
     if (!state.wsConnected) {
-      fetchToolPermissions();
+      fetchToolPermissions().then(reachable => { if (reachable) flushOfflineQueue(); });
       refreshActiveConversation();
       fetchTokenQuota();
     }
@@ -5882,10 +5953,7 @@ document.addEventListener("DOMContentLoaded", () => {
     mainTaskInput.addEventListener("paste", handleClipboardImagePaste);
   }
 
-  const secondaryTaskInput = document.getElementById("secondaryTaskInput");
-  if (secondaryTaskInput) {
-    secondaryTaskInput.addEventListener("paste", handleClipboardImagePaste);
-  }
+  // The secondary composer sends text only. Leave its clipboard handling native.
 
   // Global image paste support (Ctrl+V across chat window)
   document.addEventListener("paste", (e) => {

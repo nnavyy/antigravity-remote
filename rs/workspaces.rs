@@ -33,7 +33,7 @@ fn is_ignored_dir(name: &str) -> bool {
     name.starts_with('.') || IGNORED_DIRS.contains(&name.to_lowercase().as_str())
 }
 
-fn strip_windows_prefix(path: PathBuf) -> PathBuf {
+pub fn strip_windows_prefix(path: PathBuf) -> PathBuf {
     let s = path.to_string_lossy();
     if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
         PathBuf::from(format!(r"\\{}", stripped))
@@ -583,7 +583,11 @@ impl WorkspaceState {
             revision.update((bytes.len() as u64).to_be_bytes());
             revision.update(bytes);
         };
-        include(repo_path.as_os_str().as_encoded_bytes());
+        include(
+            strip_windows_prefix(repo_path.canonicalize().map_err(|e| e.to_string())?)
+                .as_os_str()
+                .as_encoded_bytes(),
+        );
         include(base.as_bytes());
         include(&status);
         include(&Self::git_bytes(
@@ -622,11 +626,15 @@ impl WorkspaceState {
                     .file_type();
                 if kind.is_dir() && fp.join(".git").exists() {
                     include(b"embedded git repository");
-                    include(&Self::git_bytes(Self::make_git(&fp).args([
-                        "rev-parse",
-                        "--verify",
-                        "HEAD",
-                    ]))?);
+                    let head = Self::make_git(&fp)
+                        .args(["rev-parse", "--verify", "--quiet", "HEAD"])
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    match head.status.code() {
+                        Some(0) => include(&head.stdout),
+                        Some(1) => include(b"unborn HEAD"),
+                        _ => return Err(Self::git_error_message(&head)),
+                    }
                 } else {
                     let result = if kind.is_symlink() {
                         include(b"symlink");

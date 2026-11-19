@@ -1,0 +1,57 @@
+{
+  "checked": "2026-11-19T10:38:29.462563+07:00",
+  "cli_version": "1.5.12",
+  "direct_count": 23,
+  "targets": {
+    "ide": {
+      "http": 200,
+      "connected": true,
+      "selected_target": "ide",
+      "source": "antigravity_runtime",
+      "count": 24,
+      "enabled": 23,
+      "disabled_ids": [
+        "gemini-4-carbon-disabled"
+      ]
+    },
+    "auto": {
+      "http": 200,
+      "connected": true,
+      "selected_target": "ide",
+      "source": "antigravity_runtime",
+      "count": 24,
+      "enabled": 23,
+      "disabled_ids": [
+        "gemini-4-carbon-disabled"
+      ]
+    },
+    "cli": {
+      "http": 200,
+      "connected": true,
+      "selected_target": "cli",
+      "source": "agy_cli",
+      "count": 23,
+      "enabled": 23,
+      "disabled_ids": [],
+      "missing_ids": [],
+      "extra_ids": []
+    }
+  },
+  "quota_live": true,
+  "quota_group_titles": [
+    "Gemini Models",
+    "Claude and GPT models",
+    "Gemini 4 Argon"
+  ],
+  "ide_turn": {
+    "submit_http": 200,
+    "acknowledged": true,
+    "marker_received": true
+  },
+  "ide_followup": {
+    "active_after_idle": false,
+    "submit_http": 200,
+    "marker_received": true,
+    "same_session": true
+  }
+}

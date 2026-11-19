@@ -37,11 +37,11 @@ The local load test served 1,600 synthetic health and cached catalog reads with 
 
 ## What to send
 
-Share `antigravity-development-handoff.zip` from the project's `dist` directory. It includes the source, locked dependency manifest, Windows launch scripts, test fixtures, reviewer instructions and selected test evidence. The archive is assembled from an explicit file list. Local conversations, credentials, screenshots, installed binaries and Git history stay outside the archive. The runtime and launch files were built in a clean directory using cached dependencies. The resulting executable served the homepage, health check and empty pending-permissions list. [Clean build evidence](review/development-handoff/clean-build.json)
+Share `antigravity-remote-source.zip` from the project's `dist` directory. It includes the source, locked dependency manifest, Windows launch scripts, test fixtures, reviewer instructions and selected test evidence. The archive is assembled from an explicit file list. Local conversations, credentials, screenshots, installed binaries and Git history stay outside the archive. The runtime and launch files were built in a clean directory using cached dependencies. The resulting executable served the homepage, health check and empty pending-permissions list. [Clean build evidence](review/development-handoff/clean-build.json)
 
 ## Running and reproducing
 
-Sign in to Antigravity on Windows, run `.\build.bat` and then `.\Start_Antigravity_Remote.bat`. In Connect, scan the laptop QR from a phone on the same Wi-Fi. If a bridge was already running when the build completed, close that server when its work finishes, then launch the batch file again. Windows may retain a `bridge-*.bak` image until the prior process exits.
+Sign in to Antigravity on Windows, run `.\build.bat` and then `.\Start_Antigravity_Remote.bat`. In Connect, scan the laptop QR from a phone on the same Wi-Fi. If a bridge was already running when the build completed, close that server when its work finishes, then launch the batch file again. Windows may retain a `target/release/bridge-*.bak` image until the prior process exits.
 
 The locked Rust build requires its Windows linker. The tests also use Git, Node 22+, Chrome and Python with `psutil` and `websockets`. On a GNU Rust installation, put the MinGW binary directory on PATH before running the tests. After creating the Python environment, use these PowerShell commands from the project root.
 

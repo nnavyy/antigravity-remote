@@ -1,0 +1,12 @@
+{
+  "watcher_first": {
+    "active_after_idle": false,
+    "followup_http": 200,
+    "native_sends": 2
+  },
+  "reader_first": {
+    "active_after_idle": false,
+    "followup_http": 200,
+    "native_sends": 2
+  }
+}

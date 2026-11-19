@@ -1,5 +1,4 @@
-' Script VBS untuk menjalankan Antigravity Mobile Bridge di background 24/7 tanpa jendela terminal
-' Memastikan server tetap aktif bahkan ketika Antigravity IDE di-close atau laptop direstart
+' Start the Windows bridge in a hidden console.
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO = CreateObject("Scripting.FileSystemObject")
 scriptDir = FSO.GetParentFolderName(WScript.ScriptFullName)

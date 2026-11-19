@@ -10,6 +10,7 @@ import time
 from urllib.request import urlopen
 
 import psutil
+from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -109,6 +110,7 @@ def main():
                     assert focus_preserved, "An unchanged permission refresh removed the focused button"
                     for name, option in (("Allow once","read-once"), ("Deny once","deny")):
                         if option == "deny":
+                            command("Emulation.setDeviceMetricsOverride", {"width":320,"height":568,"deviceScaleFactor":1,"mobile":True})
                             next_request = fixture.permission()
                             assert next_request["request_id"] != first["request_id"]
                             wait_for(visible)
@@ -144,13 +146,16 @@ def main():
                         wait_for('document.querySelector("#toolPermissions").classList.contains("hidden")')
                         replies = [e["result"]["outcome"] for e in fixture.events() if e.get("id") == 9000]
                         assert replies[-1] == {"outcome":"selected","optionId":option}
-                    result = {"viewport":[390,844],"visible_before_reload":True,"visible_after_reload":True,
+                    result = {"viewport":[390,844],"denial_viewport":[320,568],"visible_before_reload":True,"visible_after_reload":True,
                               "native_choices":["read-once","deny"],"touch_hit_test_passed":True,
                               "refresh_preserved_focus":focus_preserved,"keyboard_tabs":navigation,
                               "connection_retry_opens_paired_chat":True,"resolved_cards_hidden":True}
                     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf8")
                     print(json.dumps(result))
-                    ws.send(json.dumps({"id":seq+1,"method":"Browser.close","params":{}}))
+                    try:
+                        command("Browser.close", {})
+                    except ConnectionClosed:
+                        pass
             finally:
                 try:
                     proc.wait(timeout=15)

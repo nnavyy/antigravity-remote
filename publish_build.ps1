@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $destination = Join-Path $PSScriptRoot 'antigravity-bridge.exe'
 $source = Join-Path $PSScriptRoot 'target\release\antigravity-bridge.exe'
+if (-not [IO.File]::Exists($source)) { throw "Release executable missing. Run cargo build --release --locked first." }
 function Get-ImageDigest([string]$path) {
     $stream = [IO.File]::OpenRead($path)
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -15,7 +16,7 @@ if ([IO.File]::Exists($destination) -and
 }
 $id = [guid]::NewGuid()
 $stage = Join-Path $PSScriptRoot "bridge-$id.tmp"
-$backup = Join-Path $PSScriptRoot "bridge-$id.bak"
+$backup = Join-Path (Split-Path -Parent $source) "bridge-$id.bak"
 try {
     [IO.File]::Copy($source, $stage)
     if ([IO.File]::Exists($destination)) {

@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-19",
+  "scope": "Actual UI request generation plus disposable HTTP/Git; no provider traffic",
+  "checks": [
+    {
+      "action": "rejectFileChange(\"shared.txt\")",
+      "server_selected": "repo-b",
+      "request_workspace": "repo-a",
+      "scope": "file",
+      "repo_a_expected_change": true,
+      "repo_b_untouched": true
+    },
+    {
+      "action": "acceptFileChange(\"shared.txt\")",
+      "server_selected": "repo-b",
+      "request_workspace": "repo-a",
+      "scope": "file",
+      "repo_a_expected_change": true,
+      "repo_b_untouched": true
+    },
+    {
+      "action": "confirmRejectAllChanges()",
+      "server_selected": "repo-b",
+      "request_workspace": "repo-a",
+      "scope": "all",
+      "repo_a_expected_change": true,
+      "repo_b_untouched": true
+    },
+    {
+      "action": "confirmAcceptAllChanges()",
+      "server_selected": "repo-b",
+      "request_workspace": "repo-a",
+      "scope": "all",
+      "repo_a_expected_change": true,
+      "repo_b_untouched": true
+    }
+  ],
+  "binary_sha256": "39053465c16e1eb90f4f5954f0ada884e0fe90877413a7daabd6d0ad107e17b0"
+}

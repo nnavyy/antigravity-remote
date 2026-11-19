@@ -141,6 +141,70 @@ class AgentFlow(unittest.TestCase):
 
 
 class ModelFlow(unittest.TestCase):
+    def test_native_only_chat_stays_listed_and_cached_activity_expires(self):
+        root = self.server.root
+        cid = "native-review"
+        transcript = root / "home/.gemini/antigravity/brain" / cid / ".system_generated/logs/transcript.jsonl"
+        transcript.parent.mkdir(parents=True)
+        transcript.write_text(json.dumps({"type":"USER_INPUT","content":"Fixture question"}) + "\n")
+        stamp = time.time() - 11
+        os.utime(transcript, (stamp, stamp))
+        metadata = root / "conversations" / f"{cid}_meta.json"
+        metadata.parent.mkdir(exist_ok=True)
+        metadata.write_text(json.dumps({"ide_conversation_id":cid}))
+        api = self.server.json
+        self.assertIn(cid, [c["id"] for c in api("GET","/api/conversations")[1]["conversations"]])
+        self.assertTrue(api("GET",f"/api/conversations/{cid}")[1]["is_processing"])
+        time.sleep(max(0, stamp + 17 - time.time()))
+        self.assertFalse(api("GET",f"/api/conversations/{cid}")[1]["is_processing"])
+
+    def test_busy_queue_retries_after_the_original_turn_finishes(self):
+        api = self.server.json
+        cid = api("POST", "/api/conversations", {"title":"Busy fixture"})[1]["id"]
+        task = {"conversation_id":cid,"model":"future-v99","prompt":"Fixture"}
+        self.trajectory_status = "CASCADE_RUN_STATUS_RUNNING"
+        self.assertEqual(api("POST","/api/tasks/submit",task)[0],200)
+        ticket = api("POST","/api/tasks/submit",dict(task,queue_mode="queue"))[1]["task_id"]
+        url = f"/api/queue/{ticket}/dispatch"
+        self.assertEqual(api("POST",url)[1]["code"],"workspace_busy")
+        self.trajectory_status = "CASCADE_RUN_STATUS_IDLE"
+        api("GET",f"/api/conversations/{cid}")
+        result = api("POST",url)
+        self.assertEqual(result[0],200,result[1])
+        self.assertEqual(sum(m=="SendUserCascadeMessage" for m,_ in self.events),2)
+
+    def test_offline_conversation_replay_and_metadata_cleanup(self):
+        api = self.server.json
+        draft = {"offline_draft_id":str(uuid.uuid4()),"title":"Offline fixture","workspace_path":str(self.server.root)}
+        cid = api("POST","/api/conversations",draft)[1]["id"]
+        self.assertEqual(api("POST","/api/conversations",draft)[1]["id"],cid)
+        self.assertEqual(api("DELETE",f"/api/conversations/{cid}")[0],200)
+        self.assertFalse((self.server.root/"conversations"/f"{cid}_meta.json").exists())
+        self.assertFalse(api("POST","/api/conversations",draft)[1].get("id"))
+
+    def test_embedded_repository_without_commit_has_a_stable_parent_review(self):
+        repo = self.server.root
+        for path in (repo,repo/"nested"):
+            subprocess.run(["git","init","-q",str(path)],check=True,capture_output=True)
+        (repo/"nested"/"marker.txt").write_text("fixture")
+        api = self.server.json
+        route = "/api/changes?workspace_path="+quote(str(repo),safe="")
+        status, review, _ = api("GET",route)
+        self.assertEqual(status,200)
+        self.assertEqual(review["availability"],"ready")
+        self.assertEqual(api("GET",route)[1]["revision"],review["revision"])
+
+    def test_ide_attachment_uses_the_uploaded_file_on_the_laptop(self):
+        data = b'--audit\r\nContent-Disposition: form-data; name="file"; filename="x.png"\r\nContent-Type: image/png\r\n\r\n\x89PNG\r\n\x1a\nfixture\r\n--audit--\r\n'
+        status, _, raw = self.server.request("POST", "/api/upload", data, {"Content-Type":"multipart/form-data; boundary=audit"})
+        self.assertEqual(status, 200)
+        image = json.loads(raw)
+        cid = self.server.json("POST", "/api/conversations", {"title":"Image fixture"})[1]["id"]
+        status, out, _ = self.server.json("POST", "/api/tasks/submit", {"conversation_id":cid,"model":"future-v99",
+            "execution_target":"ide","prompt":"Describe fixture","images":[image["file_url"]]})
+        self.assertEqual(status, 200, out)
+        self.assertIn(image["file_path"], str(self.events[-1][1]["items"][0]["text"]))
+
     def setUp(self):
         self.models = {"future-v99":{"displayName":"Future model","model":"MODEL_FUTURE"}, "paid-v2":{"displayName":"Paid model","model":"MODEL_PAID","disabled":True}, "internal":{"displayName":"Hidden completion model"}}
         self.events = []
@@ -416,6 +480,25 @@ class AcpFlow(unittest.TestCase):
         self.assertEqual(stopped[0], 200, stopped[1])
         self.assertEqual(self.completed()["messages"][-1]["status"], "cancelled")
 
+    def test_queue_recovers_from_a_session_setup_failure_without_double_sending(self):
+        session_file = self.server.root / "session-bootstrap.json"
+        self.server.env["AGY_FIXTURE_SESSION_CATALOG"] = str(session_file)
+        self.server.restart()
+        api = self.server.json
+        status, ticket, _ = api("POST","/api/tasks/submit",{"conversation_id":self.cid,
+            "prompt":"One fixture turn","model":"future-high","execution_target":"cli","queue_mode":"queue"})
+        self.assertEqual(status,200,ticket)
+        route = f"/api/queue/{ticket['task_id']}/dispatch"
+        status, failed, _ = api("POST",route)
+        self.assertEqual((status,failed.get("code")),(502,"delivery_not_started"),failed)
+        self.assertFalse(any(e["method"] == "session/prompt" for e in self.events()))
+        session_file.write_text(json.dumps({"models":{"currentModelId":"future-high",
+            "availableModels":[{"modelId":"future-high","name":"Future (High)"}]}}))
+        status, sent, _ = api("POST",route)
+        self.assertEqual(status,200,sent)
+        self.completed()
+        self.assertEqual(sum(e["method"] == "session/prompt" for e in self.events()),1)
+
     def test_queue_revalidates_cli_catalog_without_switching_transport(self):
         payload = {"conversation_id":self.cid,"prompt":"Fixture","model":"future-xhigh","queue_mode":"queue"}
         queued = self.server.json("POST", "/api/tasks/submit", payload)[1]
@@ -630,6 +713,24 @@ class Smoke(unittest.TestCase):
             self.assertEqual(self.server.json("GET", "/api/status", headers=authed)[0], 401)
         finally:
             self.server.json("POST", "/api/settings", {"remote_mode":"lan", "require_lan_pin":False})
+
+    def test_pairing_reset_closes_an_established_phone_session_promptly(self):
+        from websockets.exceptions import ConnectionClosed
+        from websockets.sync.client import connect
+        api = self.server.json
+        api("POST","/api/settings",{"remote_mode":"tunnel"})
+        token = (self.server.root / "data/.bridge_token").read_text().strip()
+        try:
+            with connect(f"ws://127.0.0.1:{self.server.port}/ws", additional_headers={
+                "CF-Connecting-IP":"192.0.2.55","Cookie":f"ag_session={token}"}, open_timeout=5) as phone:
+                self.assertEqual(json.loads(phone.recv(timeout=10))["type"],"INITIAL_STATE")
+                self.assertEqual(api("POST","/api/pairing/reset")[0],200)
+                deadline = time.monotonic() + 3
+                with self.assertRaises(ConnectionClosed):
+                    while time.monotonic() < deadline:
+                        phone.recv(timeout=max(.05,deadline-time.monotonic()))
+        finally:
+            api("POST","/api/settings",{"remote_mode":"lan","require_lan_pin":False})
 
     def test_websocket_initial_state_and_ping(self):
         with socket.create_connection(("127.0.0.1", self.server.port), timeout=12) as sock:

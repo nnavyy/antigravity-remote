@@ -398,9 +398,17 @@ impl ConversationManager {
             .unwrap_or((0, 0));
 
         let mtime_secs = mtime_key / 1_000_000_000;
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let is_fresh = now_secs.saturating_sub(mtime_secs) <= 15;
         if let Ok(cache) = self.cache.lock() {
             if let Some((c_mt, c_sz, ref base)) = cache.get(conv_id) {
-                if *c_mt == mtime_key && *c_sz == file_size {
+                if *c_mt == mtime_key
+                    && *c_sz == file_size
+                    && (is_fresh || base["is_processing"] != true)
+                {
                     let mut out = base.clone();
                     self.merge_overlay(conv_id, &mut out);
                     return out;
@@ -509,11 +517,6 @@ impl ConversationManager {
             }
         }
 
-        let now_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let is_fresh = now_secs.saturating_sub(mtime_secs) <= 15;
         let is_processing =
             is_fresh && (last_step_type == "USER_INPUT" || last_tool_name.is_some());
         let current_action = if is_processing {
@@ -591,7 +594,13 @@ impl ConversationManager {
             .into_iter()
             .flatten()
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_name().to_string_lossy().ends_with("_meta.json"))
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_suffix("_meta.json"))
+                    .is_some_and(|id| Self::valid_id(id) && self.local_conv_path(id).is_file())
+            })
             .filter_map(|entry| fs::read(entry.path()).ok())
             .filter_map(|data| serde_json::from_slice::<Value>(&data).ok())
             .filter_map(|data| data["ide_conversation_id"].as_str().map(str::to_string))
@@ -752,11 +761,28 @@ impl ConversationManager {
     pub fn create_conversation(
         &self,
         title: Option<String>,
-        workspace: &str,
+        workspace: &Path,
         skills: Vec<String>,
         initial_prompt: Option<String>,
+        offline_id: Option<uuid::Uuid>,
     ) -> Value {
-        let cid = uuid::Uuid::new_v4().to_string();
+        let _guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let cid = offline_id
+            .map(|id| format!("draft-{id}"))
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        if offline_id.is_some() {
+            if self
+                .deleted_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains(&cid)
+            {
+                return json!({"status":"error","message":"This draft conversation was deleted."});
+            }
+            if self.local_conv_path(&cid).exists() {
+                return self.get_conversation(&cid).unwrap_or_else(|| json!({"status":"error","message":"Could not reload the saved conversation."}));
+            }
+        }
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let final_title = title
             .filter(|t| !t.trim().is_empty())
@@ -794,7 +820,8 @@ impl ConversationManager {
         let conv = json!({
             "id": cid,
             "title": final_title,
-            "workspace": workspace,
+            "workspace": workspace.file_name().and_then(|s| s.to_str()).unwrap_or("Project"),
+            "workspace_path":workspace,
             "source": "mobile_bridge",
             "created_at": now,
             "updated_at": now,
@@ -821,19 +848,31 @@ impl ConversationManager {
         }
         let _write_guard = self.write_lock.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(mut del) = self.deleted_ids.lock() {
-            del.insert(conv_id.to_string());
-            let vec: Vec<String> = del.iter().cloned().collect();
+            let mut next = del.clone();
+            next.insert(conv_id.to_string());
+            if let Some(native) = self.metadata(conv_id)["ide_conversation_id"]
+                .as_str()
+                .filter(|s| Self::valid_id(s))
+            {
+                next.insert(native.to_owned());
+            }
+            let vec: Vec<String> = next.iter().cloned().collect();
             let deleted_file = self
                 .root
                 .join("conversations")
                 .join("deleted_sessions.json");
             if let Ok(s) = serde_json::to_string_pretty(&vec) {
                 if crate::storage::atomic_write(&deleted_file, s.as_bytes()).is_err() {
-                    del.remove(conv_id);
                     return false;
                 }
             }
+            *del = next;
         }
+        let _ = fs::remove_file(
+            self.root
+                .join("conversations")
+                .join(format!("{conv_id}_meta.json")),
+        );
         let _ = fs::remove_file(self.local_conv_path(conv_id));
         let _ = fs::remove_file(self.overlay_path(conv_id));
         if let Ok(mut act) = self.active_id.lock() {
@@ -853,7 +892,7 @@ mod tests {
     fn native_runtime_responses_and_execution_errors_survive_restart() {
         let root = std::env::temp_dir().join(format!("ag-native-{}", uuid::Uuid::new_v4()));
         let mgr = ConversationManager::new(root.clone());
-        let cid = mgr.create_conversation(None, "Test", vec![], None)["id"]
+        let cid = mgr.create_conversation(None, Path::new("Test"), vec![], None, None)["id"]
             .as_str()
             .unwrap()
             .to_string();
@@ -912,7 +951,7 @@ mod tests {
     fn concurrent_messages_are_not_lost() {
         let root = std::env::temp_dir().join(format!("ag-write-{}", uuid::Uuid::new_v4()));
         let mgr = std::sync::Arc::new(ConversationManager::new(root.clone()));
-        let conv = mgr.create_conversation(None, "Test", vec![], None);
+        let conv = mgr.create_conversation(None, Path::new("Test"), vec![], None, None);
         let cid = conv["id"].as_str().unwrap().to_string();
         std::thread::scope(|scope| {
             for i in 0..20 {

@@ -1,0 +1,232 @@
+{
+  "models": {
+    "count": 23,
+    "families": [
+      {
+        "name": "Gemini 4 Neon",
+        "levels": [
+          "High",
+          "XHigh",
+          "Medium",
+          "Low"
+        ]
+      },
+      {
+        "name": "Gemini 4 Argon",
+        "levels": [
+          "Medium",
+          "High",
+          "Low"
+        ]
+      },
+      {
+        "name": "Gemini 4 Hydrogen",
+        "levels": [
+          "High",
+          "XHigh",
+          "Medium",
+          "Low"
+        ]
+      },
+      {
+        "name": "Orchestrator (Neon)",
+        "levels": [
+          "Default"
+        ]
+      },
+      {
+        "name": "Orchestrator (Argon)",
+        "levels": [
+          "Default"
+        ]
+      },
+      {
+        "name": "Gemini 3.8 Flash",
+        "levels": [
+          "High",
+          "Medium",
+          "Low"
+        ]
+      },
+      {
+        "name": "Claude Opus 5.5",
+        "levels": [
+          "Low",
+          "Medium",
+          "High"
+        ]
+      },
+      {
+        "name": "Claude Sonnet 5.5",
+        "levels": [
+          "Low",
+          "Medium",
+          "High"
+        ]
+      },
+      {
+        "name": "GPT-OSS 120B",
+        "levels": [
+          "Medium"
+        ]
+      }
+    ],
+    "source": "Connected to AGY CLI. Models update automatically."
+  },
+  "performance": {
+    "levels": [
+      {
+        "text": "Low",
+        "selected": "false"
+      },
+      {
+        "text": "Medium",
+        "selected": "false"
+      },
+      {
+        "text": "High",
+        "selected": "false"
+      },
+      {
+        "text": "XHigh",
+        "selected": "true"
+      }
+    ],
+    "model": "gemini-4-neon-xhigh",
+    "horizontalOverflow": false
+  },
+  "submission": {
+    "model": "gemini-4-neon-xhigh",
+    "performance": "XHigh",
+    "execution_target": "cli"
+  },
+  "layouts": [
+    {
+      "width": 320,
+      "height": 568,
+      "scrollWidth": 320,
+      "send": {
+        "top": 363.421875,
+        "bottom": 407.421875
+      },
+      "nav": {
+        "top": 499,
+        "bottom": 568
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        690
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "send": {
+        "top": 558.90625,
+        "bottom": 602.90625
+      },
+      "nav": {
+        "top": 775,
+        "bottom": 844
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        861
+      ]
+    },
+    {
+      "width": 390,
+      "height": 450,
+      "scrollWidth": 390,
+      "send": {
+        "top": 244.90625,
+        "bottom": 288.90625
+      },
+      "nav": {
+        "top": 381,
+        "bottom": 450
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        547
+      ]
+    },
+    {
+      "width": 768,
+      "height": 844,
+      "scrollWidth": 768,
+      "send": {
+        "top": 563.390625,
+        "bottom": 607.390625
+      },
+      "nav": {
+        "top": 775,
+        "bottom": 844
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        826
+      ]
+    },
+    {
+      "width": 820,
+      "height": 844,
+      "scrollWidth": 820,
+      "send": {
+        "top": 563.390625,
+        "bottom": 607.390625
+      },
+      "nav": {
+        "top": 775,
+        "bottom": 844
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        826
+      ]
+    },
+    {
+      "width": 821,
+      "height": 844,
+      "scrollWidth": 806,
+      "send": {
+        "top": 626.515625,
+        "bottom": 670.515625
+      },
+      "nav": {
+        "top": -36.484375,
+        "bottom": 15.515625
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        890
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 844,
+      "scrollWidth": 1265,
+      "send": {
+        "top": 626.515625,
+        "bottom": 670.515625
+      },
+      "nav": {
+        "top": -36.484375,
+        "bottom": 15.515625
+      },
+      "sendHit": true,
+      "performanceCount": 4,
+      "performanceRows": [
+        890
+      ]
+    }
+  ],
+  "errors": []
+}

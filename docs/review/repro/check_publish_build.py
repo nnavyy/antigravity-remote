@@ -34,7 +34,19 @@ def main():
         finally:
             proc.terminate()
             proc.wait(timeout=10)
-    print("First publish, unchanged live image and live replacement passed.")
+        release.unlink()
+        missing = subprocess.run(publish, capture_output=True, text=True)
+        assert missing.returncode and "Release executable missing" in missing.stderr
+        emitter = case / "fixture.cmd"
+        emitter.write_text("@echo off\n" + "".join(f"echo fixture line {n:02}\n" for n in range(30)) + "exit /b 7\n")
+        log = case / "bridge.log"
+        logger = subprocess.run(["powershell","-NoProfile","-ExecutionPolicy","Bypass","-File",
+            str(ROOT / "run_background_log.ps1"),"-Binary",str(emitter),"-LogPath",str(log),"-LimitBytes","80"],
+            capture_output=True)
+        assert logger.returncode == 7, logger.stderr
+        assert max(log.stat().st_size, (case / "bridge.log.1").stat().st_size) <= 80
+        assert "fixture line 29" in log.read_text()
+    print("First publish, live replacement, missing build, log rotation and exit-code propagation passed.")
 
 
 if __name__ == "__main__":

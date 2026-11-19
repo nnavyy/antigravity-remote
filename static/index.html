@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="stylesheet" href="/static/app.css?v=10.5">
-  <link rel="stylesheet" href="/static/ux.css?v=10.6">
+  <link rel="stylesheet" href="/static/ux.css?v=10.7">
 </head>
 <body>
 
@@ -432,6 +432,7 @@
           </button>
         </div>
 
+        <details id="unsentDrafts" class="composer-options hidden"><summary>Unsent drafts</summary><div></div></details>
         <div class="input-wrapper">
           <textarea id="taskInput" class="task-textarea" aria-label="Message" rows="3" placeholder="Write a message or use the microphone..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
           <!-- Web Speech API Dictation Button (FR-01) -->
@@ -531,7 +532,7 @@
             </svg>
             <span>Attach images</span>
           </label>
-          <input type="file" id="imageFileInput" accept="image/*" multiple class="hidden">
+          <input type="file" id="imageFileInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple class="hidden">
           <div id="imagePreviewContainer" class="image-preview-container hidden"></div>
         </div>
 
@@ -1357,7 +1358,7 @@
   <!-- Toast Notification Container (Modern Floating) -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="/static/app.js?v=10.10"></script>
+  <script src="/static/app.js?v=10.11"></script>
   <script src="/static/connect.js?v=10.7"></script>
 </body>
 </html>

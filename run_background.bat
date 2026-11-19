@@ -19,7 +19,7 @@ if not exist "%BRIDGE_BINARY%" (
     exit /b 1
 )
 :server_loop
-"%BRIDGE_BINARY%" >> "%~dp0logs\bridge_stdout.log" 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_background_log.ps1" -Binary "%BRIDGE_BINARY%" -LogPath "%~dp0logs\bridge_stdout.log"
 if not errorlevel 1 exit /b 0
 rem Exit instead of restarting forever when another service owns the port.
 powershell -NoProfile -Command "if (Get-NetTCPConnection -State Listen -LocalPort $env:BRIDGE_PORT -ErrorAction SilentlyContinue) { exit 0 }; exit 1" >nul 2>&1

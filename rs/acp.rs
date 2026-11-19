@@ -35,43 +35,73 @@ pub fn executable() -> Option<PathBuf> {
     })
 }
 
-pub fn image_blocks(root: &std::path::Path, images: &Value) -> Result<Vec<Value>, String> {
-    let mut blocks = Vec::new();
-    let mut total = 0;
-    for image in images.as_array().into_iter().flatten() {
-        let path = image.as_str().ok_or("Invalid image attachment.")?;
-        let path = if let Some(name) = path.strip_prefix("/uploads/") {
-            root.join("uploads").join(name)
-        } else {
-            PathBuf::from(path)
+pub fn resolve_images(
+    root: &std::path::Path,
+    images: &Value,
+) -> Result<Vec<(PathBuf, &'static str)>, String> {
+    if images.is_null() {
+        return Ok(Vec::new());
+    }
+    let images = images
+        .as_array()
+        .ok_or("Expected a list of image attachments.")?;
+    if images.is_empty() {
+        return Ok(Vec::new());
+    }
+    let uploads = root
+        .join("uploads")
+        .canonicalize()
+        .map_err(|_| "Image attachments are unavailable.")?;
+    let mut paths = Vec::new();
+    let mut total = 0u64;
+    for image in images {
+        let name = image
+            .as_str()
+            .filter(|s| !s.chars().any(char::is_control))
+            .ok_or("Invalid image attachment.")?;
+        let path = match name.strip_prefix("/uploads/") {
+            Some(name) => uploads.join(name),
+            None => PathBuf::from(name),
         };
         let path = path
             .canonicalize()
             .map_err(|_| "An image attachment is no longer available.")?;
-        let uploads = root
-            .join("uploads")
-            .canonicalize()
-            .map_err(|_| "Image attachments are unavailable.")?;
-        if !path.starts_with(uploads) {
+        if path.parent() != Some(uploads.as_path())
+            || !path.is_file()
+            || path.to_string_lossy().chars().any(char::is_control)
+        {
             return Err("Attach images through the bridge upload control.".into());
         }
-        total += std::fs::metadata(&path)
-            .map_err(|_| "Could not read the image attachment.")?
-            .len();
+        let ext = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let mime = match ext.as_str() {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            "gif" => "image/gif",
+            _ => return Err("Attach a PNG, JPEG, WebP or GIF image.".into()),
+        };
+        total = total.saturating_add(
+            path.metadata()
+                .map_err(|_| "Could not read the image attachment.")?
+                .len(),
+        );
         if total > 12 * 1024 * 1024 {
             return Err("Image attachments exceed 12 MiB for one message.".into());
         }
-        let data = std::fs::read(&path).map_err(|_| "Could not read the image attachment.")?;
-        let mime = match path.extension().and_then(|e| e.to_str()) {
-            Some("png") => "image/png",
-            Some("jpg" | "jpeg") => "image/jpeg",
-            Some("webp") => "image/webp",
-            Some("gif") => "image/gif",
-            _ => return Err("Unsupported image attachment type.".into()),
-        };
-        blocks.push(json!({"type":"image","mimeType":mime,"data":base64::engine::general_purpose::STANDARD.encode(data)}));
+        paths.push((crate::workspaces::strip_windows_prefix(path), mime));
     }
-    Ok(blocks)
+    Ok(paths)
+}
+
+pub fn image_blocks(images: &[(PathBuf, &str)]) -> Result<Vec<Value>, String> {
+    images.iter().map(|(path, mime)| {
+        let data = std::fs::read(path).map_err(|_| "Could not read the image attachment.")?;
+        Ok(json!({"type":"image","mimeType":mime,"data":base64::engine::general_purpose::STANDARD.encode(data)}))
+    }).collect()
 }
 
 pub enum DecisionError {
@@ -82,6 +112,7 @@ pub enum DecisionError {
 
 pub struct Client {
     permissions: AsyncMutex<Permissions>,
+    decision_writes: AsyncMutex<()>,
     input: AsyncMutex<ChildStdin>,
     child: AsyncMutex<Child>,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>,
@@ -113,6 +144,7 @@ impl Client {
         let (tx, rx) = mpsc::channel(256);
         let client = Arc::new(Self {
             input: AsyncMutex::new(input),
+            decision_writes: AsyncMutex::new(()),
             permissions: AsyncMutex::new(Permissions::default()),
             child: AsyncMutex::new(child),
             pending: Mutex::new(HashMap::new()),
@@ -354,6 +386,7 @@ impl Client {
         option: Option<&str>,
         approve: bool,
     ) -> Result<(), DecisionError> {
+        let _order = self.decision_writes.lock().await;
         let mut permissions = self.permissions.lock().await;
         if permissions.closed || !self.alive.load(Ordering::SeqCst) {
             return Err(DecisionError::Stale);
@@ -381,16 +414,21 @@ impl Client {
             None => return Err(DecisionError::InvalidOption),
         };
         let (id, _) = permissions.pending.remove(pos);
+        drop(permissions);
         self.write(&json!({"jsonrpc":"2.0","id":id,"result":{"outcome":outcome}}))
             .await
             .map_err(|_| DecisionError::Disconnected)
     }
 
     pub async fn cancel(&self) -> Result<(), String> {
-        let mut permissions = self.permissions.lock().await;
-        permissions.closed = true;
+        let _order = self.decision_writes.lock().await;
+        let pending = {
+            let mut permissions = self.permissions.lock().await;
+            permissions.closed = true;
+            std::mem::take(&mut permissions.pending)
+        };
         self.write(&json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":self.session_id()}})).await?;
-        for (id, _) in permissions.pending.drain(..) {
+        for (id, _) in pending {
             self.write(
                 &json!({"jsonrpc":"2.0","id":id,"result":{"outcome":{"outcome":"cancelled"}}}),
             )
