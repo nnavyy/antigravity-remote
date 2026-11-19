@@ -21,7 +21,7 @@ def verify_public_contents(archive):
     )
     email = re.compile(r"[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})")
     for name in sorted(names):
-        if name.endswith(".png"):
+        if name.endswith((".png", ".gif")):
             continue
         data = archive.read(name).decode("utf-8")
         normalized = re.sub(r"[/\\]+", "/", data).casefold()
@@ -48,6 +48,8 @@ def main():
     args = parser.parse_args()
     names = """
         docs/AUDIT_FOLLOWUP.md docs/review/audit-followup/PLAN.md run_background_log.ps1
+        docs/assets/demo.gif docs/assets/preview-connect.png docs/assets/preview-models.png
+        docs/assets/preview-permissions.png docs/assets/preview-changes.png
         docs/review/audit-followup/verification.json docs/review/audit-followup/desktop-after.json
         docs/review/audit-followup/desktop-live.json docs/review/audit-followup/cli-live.json
         docs/review/audit-followup/permission-live.json docs/review/audit-followup/permission-browser.json
