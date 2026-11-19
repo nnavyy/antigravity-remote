@@ -29,6 +29,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs,
+    io::IsTerminal,
     net::SocketAddr,
     path::{Path, PathBuf},
     process::Command,
@@ -147,12 +148,28 @@ impl AppState {
 #[tokio::main]
 async fn main() {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let port: u16 = std::env::var("BRIDGE_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(8000);
+    let port = std::env::var("BRIDGE_PORT").unwrap_or_else(|_| "8000".into());
+    let Some(port) = port.parse::<u16>().ok().filter(|p| *p > 0) else {
+        eprintln!("BRIDGE_PORT must be a number between 1 and 65535.");
+        std::process::exit(2);
+    };
+    let host = std::env::var("BRIDGE_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let addr = SocketAddr::new(
+        host.parse().expect("BRIDGE_HOST must be an IP address"),
+        port,
+    );
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Could not bind {addr}: {e}");
+            std::process::exit(2);
+        });
 
-    let _ = fs::create_dir_all(root.join("data"));
+    // Recovery and delivery receipts belong to one running bridge, even on different ports.
+    let _instance_lock = storage::lock_instance(&root.join("data")).unwrap_or_else(|e| {
+        eprintln!("Cannot lock the bridge data directory: {e}. Check for another bridge and verify folder permissions.");
+        std::process::exit(2);
+    });
     let _ = fs::create_dir_all(root.join("uploads"));
     let _ = fs::create_dir_all(root.join("conversations"));
     let _ = fs::create_dir_all(root.join("logs"));
@@ -217,8 +234,7 @@ async fn main() {
     }
 
     // Startup banner
-    let token = load_token(&root, false);
-    let pin = derive_pin(&token);
+    let token = load_token(&root, false).expect("Cannot access bridge pairing storage on startup");
     let primary_url = state.monitor.get_primary_access_url();
     println!("============================================================");
     println!(" ANTIGRAVITY MOBILE COMMAND BRIDGE [RUST NATIVE ENGINE v2.0]");
@@ -228,7 +244,9 @@ async fn main() {
             .as_deref()
             .unwrap_or("Unavailable. Open Connect on the laptop.")
     );
-    println!(" -> Pairing PIN : {}", pin);
+    if std::io::stdout().is_terminal() {
+        println!(" -> Pairing PIN : {}", derive_pin(&token));
+    }
     println!("============================================================");
 
     // Spawn lightweight background transcript watcher (checks active transcript mtime/size every 2s)
@@ -391,14 +409,6 @@ async fn main() {
         .layer(middleware::from_fn(security_middleware))
         .with_state(state.clone());
 
-    let host = std::env::var("BRIDGE_HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let addr = SocketAddr::new(
-        host.parse().expect("BRIDGE_HOST must be an IP address"),
-        port,
-    );
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("Failed to bind port 8000");
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -478,6 +488,7 @@ async fn serve_index(State(state): State<Arc<AppState>>) -> Response {
 // ─── Connection & Pairing Endpoints ──────────────────────────
 
 async fn api_connection(
+    axum::Extension(token): axum::Extension<security::PairingToken>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
@@ -489,8 +500,7 @@ async fn api_connection(
     let lan_url = ips
         .first()
         .map(|ip| format!("http://{}:{}", ip, state.monitor.port));
-    let tok = load_token(&state.root, false);
-    let pin = derive_pin(&tok);
+    let pin = derive_pin(&token.0);
 
     let primary = state.monitor.access_url(&s.remote_mode, &ips, &ts);
     let reason = primary
@@ -558,8 +568,6 @@ async fn api_pairing_reset(
         )
             .into_response();
     }
-    load_token(&state.root, true);
-    state.pairing_epoch.send_replace(());
     if let Err(e) = save_settings(&state.root, json!({"require_lan_pin":true})) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -567,6 +575,14 @@ async fn api_pairing_reset(
         )
             .into_response();
     }
+    if load_token(&state.root, true).is_err() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"detail":"Could not save the new pairing token on the laptop."})),
+        )
+            .into_response();
+    }
+    state.pairing_epoch.send_replace(());
     state.monitor.invalidate_qr_cache();
     Json(json!({
         "ok": true,
@@ -576,6 +592,7 @@ async fn api_pairing_reset(
 }
 
 async fn api_qr(
+    axum::Extension(token): axum::Extension<security::PairingToken>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     State(state): State<Arc<AppState>>,
@@ -587,8 +604,7 @@ async fn api_qr(
         )
             .into_response();
     }
-    let tok = load_token(&state.root, false);
-    let pin = derive_pin(&tok);
+    let pin = derive_pin(&token.0);
     let primary = state.monitor.get_primary_access_url();
     let pair = primary.as_ref().map(|url| format!("{url}/?t={pin}"));
     let qr = pair
@@ -2882,7 +2898,7 @@ async fn api_clipboard_set() -> Response {
 async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
-    axum::Extension(token): axum::Extension<security::WsPairingToken>,
+    axum::Extension(token): axum::Extension<security::PairingToken>,
 ) -> impl IntoResponse {
     ws.max_message_size(64 * 1024)
         .max_frame_size(64 * 1024)
@@ -2891,7 +2907,7 @@ async fn ws_handler(
 
 async fn handle_ws(socket: WebSocket, state: Arc<AppState>, connected_token: String) {
     let mut pairing_epoch = state.pairing_epoch.subscribe();
-    if load_token(&state.root, false) != connected_token {
+    if load_token(&state.root, false).ok().as_ref() != Some(&connected_token) {
         return;
     }
     let (mut sender, mut receiver) = socket.split();
@@ -2944,7 +2960,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>, connected_token: Str
             biased;
             _ = pairing_epoch.changed() => break,
             _ = heartbeat.tick() => {
-                if load_token(&state.root, false) != connected_token || last_pong.elapsed() > Duration::from_secs(45) { break; }
+                if load_token(&state.root, false).ok().as_ref() != Some(&connected_token) || last_pong.elapsed() > Duration::from_secs(45) { break; }
                 if sender.send(Message::Ping(Vec::new())).await.is_err() { break; }
             }
             Ok(msg_str) = bcast_rx.recv() => {

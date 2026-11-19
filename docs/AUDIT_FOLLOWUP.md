@@ -1,5 +1,15 @@
 # November 19 corrective audit
 
+## Local pre-submission follow-up
+
+This source kit adds corrections after the published dev.2 release. Image uploads now name each rejected file and explain the reason while keeping successful attachments. Enabling phone sounds reports whether the laptop accepted a chime request. The background launcher displays the configured port, and the phone-link helper checks that the service on that port is Antigravity Remote.
+
+Saving a preference now keeps temporary shell and tunnel overrides out of the settings file. If an earlier build saved those overrides, review the **Connect** settings after restarting without them. A pairing-storage failure returns an error. Unpair saves the required LAN policy before rotating credentials and immediately signals open WebSocket sessions after a successful rotation.
+
+The earlier local candidate passed 37 Rust tests, 64 client tests and 59 packaged-server tests. A further review reproduced overlapping sends and uploads, stale second-pane responses, incorrect cache-removal feedback, and a duplicate startup modifying an active turn. The client now preserves edits made during delivery and checks cache removal. Startup acquires the port and a single-writer handle before chat recovery. The handle permits ordinary file reads. Redirected startup output omits the pairing PIN. If an old log containing a current PIN was shared, rotate it in **Connect → Sign out all paired phones**.
+
+The packager now uses fixed ZIP entry metadata and checks the internal Markdown destinations and common credential and personal-path patterns before replacing the output. The remaining sections record the published dev.2 baseline.
+
 The November 19 report identified defects in both the shipped Rust bridge and a Python service retained in the development workspace. Two failures were reproduced before the fixes. An IDE turn received a browser attachment URL that it could not open on the laptop. A saved model selection prevented the browser from saving an offline draft. The two previous source ZIPs also differed in seven of their 54 common files. The newer ZIP contained another 12 files.
 
 The intended handoff is a development prerelease for **one signed-in Windows laptop and its paired devices**. Google documents both its own Remote Control feature and model availability by subscription. This prototype uses the catalog reported by each installed runtime and rechecks access when sending. Google would need to evaluate its integration and support commitments separately. [Google Remote Control](https://antigravity.google/docs/remote-control/) · [Google model availability](https://antigravity.google/docs/models)

@@ -118,6 +118,44 @@ class Server:
 
 
 class AgentFlow(unittest.TestCase):
+    def test_redirected_startup_output_keeps_the_pairing_pin_out_of_logs(self):
+        server = Server(ARGS.binary)
+        try:
+            status, connection, _ = server.json("GET", "/api/connection")
+            self.assertEqual(status, 200)
+            self.assertRegex(connection["pin"], r"^\d{6}$")
+            leaked = connection["pin"] in (server.root / "server.log").read_text()
+            self.assertFalse(leaked, "Owner PIN was written to redirected output")
+        finally:
+            server.close()
+
+    def test_second_bridge_cannot_recover_a_running_instances_turn(self):
+        server = Server(ARGS.binary)
+        try:
+            self.assertEqual((server.root / "data/.bridge.lock").read_bytes(), b"")
+            meta = server.root / "conversations/live-turn_meta.json"
+            before = b'{"native_transport":"acp","acp_turn_pending":true,"acp_turn_id":"in-progress"}'
+            meta.write_bytes(before)
+            with socket.socket() as spare:
+                spare.bind(("127.0.0.1", 0))
+                other_port = spare.getsockname()[1]
+            for port, diagnostic in [(server.port, str(server.port)), (other_port, "data directory")]:
+                with self.subTest(port=port):
+                    result = subprocess.run([server.binary], cwd=server.root,
+                                            env=dict(server.env, BRIDGE_PORT=str(port)),
+                                            capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(meta.read_bytes(), before)
+                    self.assertIn(diagnostic, result.stderr.decode(errors="replace"))
+            self.assertEqual(server.json("GET", "/healthz")[0], 200)
+            for port in ("0", "65536", "invalid"):
+                result = subprocess.run([server.binary], cwd=server.root, env=dict(server.env, BRIDGE_PORT=port),
+                                        capture_output=True, timeout=5)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(b"BRIDGE_PORT", result.stderr)
+        finally:
+            server.close()
+
     def test_unverified_default_never_starts_legacy_native_helper(self):
         subprocess.run(["rustc", str(ROOT / "tests/fake_agentapi.rs"), "-o", str(ROOT / "target/test-agentapi.exe")], check=True, capture_output=True)
         server = Server(ARGS.binary, agent=True)
@@ -625,6 +663,42 @@ class Smoke(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertFalse(catalog["connected"])
         self.assertEqual(catalog["models"], [])
+
+    def test_launch_overrides_expire_after_restart(self):
+        server = Server(ARGS.binary)
+        try:
+            server.env.update(BRIDGE_ALLOW_TUNNEL="1", BRIDGE_ALLOW_SHELL="1")
+            server.restart()
+            status, current, _ = server.json("POST", "/api/settings", {"require_lan_pin":True})
+            self.assertEqual(status, 200)
+            self.assertEqual((current["remote_mode"], current["allow_shell"]), ("tunnel", True))
+            saved = json.loads((server.root / "data/.bridge_settings.json").read_text())
+            self.assertEqual(saved, {"remote_mode":"lan", "allow_shell":False, "require_lan_pin":True})
+            del server.env["BRIDGE_ALLOW_TUNNEL"], server.env["BRIDGE_ALLOW_SHELL"]
+            server.restart()
+            self.assertEqual(server.json("GET", "/api/connection")[1]["settings"], saved)
+        finally:
+            server.close()
+
+    def test_pairing_storage_errors_leave_the_previous_token_intact(self):
+        server = Server(ARGS.binary)
+        try:
+            data = server.root / "data"
+            token = data / ".bridge_token"
+            previous = token.read_bytes()
+            (data / ".bridge_settings.json").mkdir()
+            self.assertEqual(server.json("POST", "/api/pairing/reset")[0], 500)
+            self.assertTrue(token.read_bytes() == previous)
+            backup = data / "saved-token"
+            token.rename(backup)
+            token.mkdir()
+            self.assertEqual(server.json("GET", "/api/connection")[0], 503)
+            self.assertEqual(server.json("GET", "/healthz")[0], 200)
+            token.rmdir()
+            backup.rename(token)
+            self.assertEqual(server.json("GET", "/api/connection")[0], 200)
+        finally:
+            server.close()
 
     def test_session_workspace_is_bound_at_creation(self):
         cid = self.create()

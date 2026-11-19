@@ -3,6 +3,166 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 
+function uploadClient(fetch) {
+  const context = client(fetch);
+  const label = {textContent:'Attach images'};
+  context.FormData = FormData;
+  context.notices = [];
+  context.document.querySelector = () => label;
+  vm.runInContext('showToast = (message, type) => notices.push({message,type}); renderImagePreviews = () => {}; addLogEvent = () => {};', context);
+  return {context, label};
+}
+
+test('image uploads keep good files and show the backend reason for every failed file', async () => {
+  const {context,label} = uploadClient(async (url, {body,signal}) => {
+    assert.equal(url,'/api/upload');
+    assert.ok(signal instanceof AbortSignal);
+    assert.ok(body instanceof FormData);
+    const name = body.get('file').name;
+    if (name === 'good.png') return Response.json({file_path:'uploads/good.png',file_url:'/uploads/good.png'});
+    const detail = name === 'large.png' ? 'File size exceeds the 12 MiB limit.' : 'Upload a valid image file (PNG, JPEG, WebP or GIF).';
+    return Response.json({detail},{status:400});
+  });
+  context.files = [new File(['a'],'good.png'), new File(['b'],'large.png',{type:'image/png'}), new File(['c'],'broken.bmp',{type:'image/bmp'})];
+  await vm.runInContext('uploadMultipleImageFiles(files)',context);
+  assert.equal(vm.runInContext('state.pendingImages[0]?.filename',context),'good.png');
+  const messages = context.notices.map(n=>n.message).join(' ');
+  assert.match(messages,/large\.png.*12 MiB/);
+  assert.match(messages,/broken\.bmp.*valid image/);
+  assert.equal(label.textContent,'Attach images');
+});
+
+test('image uploads distinguish a timeout, a disconnected laptop and a gateway timeout', async () => {
+  for (const [reply,expected] of [
+    [() => {throw new DOMException('expired','TimeoutError');},/timed out/i],
+    [() => {throw new TypeError('fetch failed');},/disconnected from the laptop/i],
+    [() => new Response('upstream timeout',{status:504}),/504/],
+  ]) {
+    const {context,label} = uploadClient(reply);
+    context.files = [new File(['a'],'photo.png',{type:'image/png'})];
+    await vm.runInContext('uploadMultipleImageFiles(files)',context);
+    assert.match(context.notices.at(-1).message,expected);
+    assert.equal(label.textContent,'Attach images');
+    assert.equal(vm.runInContext('state.pendingImages.length',context),0);
+  }
+});
+
+test('oversized images stay on the phone and overlapping batches restore the attachment label', async () => {
+  let finish;
+  let requests = 0;
+  const {context,label} = uploadClient(() => {
+    requests++;
+    return new Promise(resolve => { finish = resolve; });
+  });
+  context.photo = new File(['a'],'first.png',{type:'image/png'});
+  const first = vm.runInContext('uploadMultipleImageFiles([photo])',context);
+  await vm.runInContext("uploadMultipleImageFiles([{name:'large.png',size:12*1024*1024+1}])",context);
+  assert.match(context.notices.at(-1).message,/12 MiB/);
+  assert.equal(requests,1);
+  assert.equal(label.textContent,'Uploading...');
+  finish(Response.json({file_path:'uploads/first.png'}));
+  await first;
+  assert.equal(label.textContent,'Attach images');
+});
+
+test('Send during an upload waits for the attachment to become available', async () => {
+  let finish;
+  const {context} = uploadClient(() => new Promise(resolve => { finish = resolve; }));
+  const input = {value:'Include this photo',style:{}};
+  context.document.getElementById = id => id === 'taskInput' ? input : null;
+  context.navigator.onLine = false;
+  context.file = new File(['a'],'photo.png');
+  vm.runInContext('addOptimisticUserMessage = updateProcessingStateUI = () => {};',context);
+  const upload = vm.runInContext('uploadMultipleImageFiles([file])',context);
+  await vm.runInContext('executeSubmitTask()',context);
+  assert.equal(input.value,'Include this photo');
+  assert.match(context.notices.at(-1).message,/upload/i);
+  finish(Response.json({file_path:'uploads/photo.png'}));
+  await upload;
+  assert.equal(vm.runInContext('state.pendingImages.length',context),1);
+});
+
+test('a delayed send acknowledgement preserves the next draft and its attachments', async () => {
+  let finish;
+  const context = client(() => new Promise(resolve => { finish = resolve; }));
+  const input = {value:'First message',style:{}};
+  context.document.getElementById = id => id === 'taskInput' ? input : null;
+  vm.runInContext(`state.activeConversationId = 'chat'; state.modelCatalogConnected = true;
+    state.modelCatalogKey = modelCatalogKey(); taskModelOptions = () => ({});
+    state.pendingImages.push({file_path:'first.png'});
+    addOptimisticUserMessage = updateProcessingStateUI = addLogEvent = () => {};`,context);
+  const send = vm.runInContext('executeSubmitTask()',context);
+  input.value = 'Second message';
+  vm.runInContext("state.pendingImages.push({file_path:'second.png'})",context);
+  finish(Response.json({status:'queued',queue_position:1}));
+  await send;
+  assert.equal(input.value,'Second message');
+  assert.equal(vm.runInContext('state.pendingImages.map(img => img.file_path).join()',context),'second.png');
+});
+
+test('switching the second pane keeps its new draft and ignores the previous pane response', async () => {
+  const pending = new Map();
+  const context = client(url => new Promise(resolve => pending.set(url,resolve)));
+  const input = {value:'First pane draft'};
+  context.document.getElementById = id => id === 'secondaryTaskInput' ? input : null;
+  context.setTimeout = () => {};
+  vm.runInContext("state.secondaryConversationId='first'; addLogEvent = () => {};",context);
+  const read = vm.runInContext("loadSecondaryConversation('first')",context);
+  const send = vm.runInContext('submitSecondaryTask()',context);
+  vm.runInContext("state.secondaryConversationId='second'",context);
+  input.value = 'New draft';
+  pending.get('/api/tasks/submit')(Response.json({status:'ok'}));
+  pending.get('/api/conversations/first')(Response.json({id:'first',messages:[]}));
+  await Promise.all([read,send]);
+  assert.equal(input.value,'New draft');
+  assert.notEqual(vm.runInContext('state.secondaryConversationData?.id',context),'first');
+});
+
+test('removing an attachment reports whether the laptop cache actually deleted it', async () => {
+  for (const [response,deleted] of [[Response.json({deleted:true}),true],[Response.json({deleted:false}),false],
+    [Response.json({detail:'Pair again'},{status:403}),false]]) {
+    const {context} = uploadClient(() => response);
+    context.logs = [];
+    vm.runInContext("addLogEvent = msg => logs.push(msg); state.pendingImages.push({filename:'a.png'})",context);
+    await vm.runInContext('removePendingImage(0)',context);
+    assert.equal(vm.runInContext('state.pendingImages.length',context),0);
+    assert.equal(context.logs.some(msg => msg.includes('removed from the upload cache')),deleted);
+    if (response.status === 403) assert.match(context.notices.at(-1).message,/Pair again/);
+  }
+});
+
+test('sound controls request browser permission during the click even with a slow laptop', async () => {
+  for (const action of ['testSoundBoth()', 'handleNotificationButtonClick()']) {
+    let finish;
+    const context = client(() => new Promise(resolve => { finish = resolve; }));
+    context.asked = 0;
+    context.Notification = context.window.Notification = {permission:'default'};
+    vm.runInContext('state.soundEnabled = false; getAudioContext = playNotificationChime = () => {}; requestPhoneNotificationPermission = () => { asked++; };',context);
+    const pending = vm.runInContext(action,context);
+    assert.equal(context.asked,1);
+    finish(Response.json({detail:'Unavailable'},{status:501}));
+    await pending;
+  }
+});
+
+test('enabling sounds reports laptop capability and requests exactly one laptop chime', async () => {
+  for (const status of [501,200]) {
+    let requests = 0;
+    const context = client(async url => {
+      assert.equal(url,'/api/sound/laptop');
+      requests++;
+      return Response.json(status === 501 ? {detail:'Laptop sound is unavailable.'} : {ok:true},{status});
+    });
+    context.notices = [];
+    context.Notification = context.window.Notification = class {static permission = 'granted'};
+    vm.runInContext('state.soundEnabled = false; getAudioContext = playNotificationChime = addLogEvent = () => {}; showToast = msg => notices.push(msg);',context);
+    await vm.runInContext('handleNotificationButtonClick()',context);
+    assert.equal(requests,1);
+    assert.match(context.notices.join(' '),status === 501 ? /laptop sound is unavailable/i : /laptop.*requested/i);
+    assert.equal(vm.runInContext('state.soundEnabled',context),true);
+  }
+});
+
 test('a new offline message survives reconnect and an earlier rejected draft', async () => {
   const calls = [];
   const context = client(async (url, options) => {
@@ -462,19 +622,19 @@ test('openFolderBrowser renders shortcuts, breadcrumbs, subfolders, and error st
     ? new Response(JSON.stringify({ status: 'error', message: 'Folder is outside the allowed project directories.' }), { headers: { 'content-type': 'application/json' } })
     : new Response(JSON.stringify({
       status: 'ok',
-      current_path: 'C:\\Users\\dev\\Projects\\app',
-      parent_path: 'C:\\Users\\dev\\Projects',
+      current_path: 'C:\\Fixture\\Projects\\app',
+      parent_path: 'C:\\Fixture\\Projects',
       shortcuts: [
-        { name: 'Projects', path: 'C:\\Users\\dev\\Projects' },
-        { name: 'Desktop', path: 'C:\\Users\\dev\\Desktop' },
+        { name: 'Projects', path: 'C:\\Fixture\\Projects' },
+        { name: 'Desktop', path: 'C:\\Fixture\\Desktop' },
       ],
       breadcrumbs: [
-        { name: 'Projects', path: 'C:\\Users\\dev\\Projects' },
-        { name: 'app', path: 'C:\\Users\\dev\\Projects\\app' },
+        { name: 'Projects', path: 'C:\\Fixture\\Projects' },
+        { name: 'app', path: 'C:\\Fixture\\Projects\\app' },
       ],
       subfolders: [
-        { name: 'api', path: 'C:\\Users\\dev\\Projects\\app\\api', is_git: true, subfolder_count: 1, has_children: true },
-        { name: 'empty', path: 'C:\\Users\\dev\\Projects\\app\\empty', is_git: false, subfolder_count: 0, has_children: false },
+        { name: 'api', path: 'C:\\Fixture\\Projects\\app\\api', is_git: true, subfolder_count: 1, has_children: true },
+        { name: 'empty', path: 'C:\\Fixture\\Projects\\app\\empty', is_git: false, subfolder_count: 0, has_children: false },
       ],
     }), { headers: { 'content-type': 'application/json' } })
   );
@@ -484,7 +644,7 @@ test('openFolderBrowser renders shortcuts, breadcrumbs, subfolders, and error st
   vm.runInContext('showToast = (m, t) => globalThis.__toasts.push({ m, t });', context);
   context.__toasts = toasts;
 
-  await vm.runInContext('openFolderBrowser("C:\\\\Users\\\\dev\\\\Projects\\\\app")', context);
+  await vm.runInContext('openFolderBrowser("C:\\\\Fixture\\\\Projects\\\\app")', context);
   assert.equal(classes.has('hidden'), false);
   assert.match(shortcutsList.innerHTML, />Projects</);
   assert.match(shortcutsList.innerHTML, />Desktop</);

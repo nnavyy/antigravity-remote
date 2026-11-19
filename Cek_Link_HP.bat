@@ -15,14 +15,14 @@ echo ================================================================
 echo.
 
 rem 1. Check whether the Rust bridge is already listening on BRIDGE_PORT
-powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri ($env:LOCAL_BASE + '/healthz') -TimeoutSec 2; if ($r.ok -eq $true) { exit 0 }; exit 1 } catch { exit 1 }" >nul 2>&1
+call :check_bridge
 if !errorlevel! neq 0 (
     echo [STATUS] Bridge server is not running in the background.
     echo [INFO] Starting Antigravity Remote in the background...
     wscript.exe "%PROJ_DIR%start_background_bridge.vbs"
     echo [WAIT] Waiting for the bridge server to respond on port %BRIDGE_PORT%...
     for /L %%i in (1,1,10) do (
-        powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri ($env:LOCAL_BASE + '/healthz') -TimeoutSec 2; if ($r.ok -eq $true) { exit 0 }; exit 1 } catch { exit 1 }" >nul 2>&1
+        call :check_bridge
         if !errorlevel! equ 0 goto server_ready
         timeout /t 1 /nobreak >nul
     )
@@ -90,3 +90,8 @@ if defined SHARE_URL if "!CHOICE!"=="3" (
     echo [OK] Link copied to clipboard: !SHARE_URL!
     timeout /t 2 >nul
 )
+exit /b 0
+
+:check_bridge
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri ($env:LOCAL_BASE + '/healthz') -TimeoutSec 2; if ($r.ok -eq $true -and $r.engine -eq 'rust-axum') { exit 0 }; exit 1 } catch { exit 1 }" >nul 2>&1
+exit /b %errorlevel%

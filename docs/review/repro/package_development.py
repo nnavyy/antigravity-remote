@@ -1,10 +1,45 @@
 """Build the reviewer source archive from an explicit file list and check every entry."""
 from argparse import ArgumentParser
 from pathlib import Path
+import posixpath
+import re
 from tempfile import NamedTemporaryFile
-from zipfile import ZIP_DEFLATED, ZipFile
+from urllib.parse import unquote, urlsplit
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def verify_public_contents(archive):
+    """Check the kit's local Markdown destinations and common private-data signatures."""
+    names = set(archive.namelist())
+    local_links = 0
+    private = re.compile(
+        r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----|(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}"
+        r"|AIza[\w-]{35}|AKIA[0-9A-Z]{16}|sk-(?:proj-)?[A-Za-z0-9_-]{24,}"
+        r"|(?i:[a-z]:[/\\]+Users[/\\]+[\w.-]+|/(?:Users|home)/[\w.-]+/)"
+    )
+    email = re.compile(r"[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})")
+    for name in sorted(names):
+        if name.endswith(".png"):
+            continue
+        data = archive.read(name).decode("utf-8")
+        normalized = re.sub(r"[/\\]+", "/", data).casefold()
+        local_paths = (p.as_posix().casefold().rstrip("/") + "/" for p in (ROOT, Path.home()) if p.parent != p)
+        if (private.search(data) or any(p in normalized for p in local_paths)
+                or any(not (domain.lower().endswith(".invalid") or domain.lower() in
+                            {"example.com", "example.org", "example.net"}) for domain in email.findall(data))):
+            raise ValueError(f"Potential private data in {name}")
+        if name.endswith(".md"):
+            for destination in re.findall(r"!?\[[^\]\n]*\]\(([^)\n]+)\)", data):
+                link = urlsplit(destination.strip("<>"))
+                if link.scheme or link.netloc or not link.path:
+                    continue
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(link.path)))
+                if target not in names:
+                    raise ValueError(f"Missing Markdown destination in {name}: {target}")
+                local_links += 1
+    return local_links
 
 
 def main():
@@ -54,15 +89,20 @@ def main():
     try:
         with ZipFile(stage, "w", ZIP_DEFLATED) as archive:
             for name, data in sorted(payloads.items()):
-                archive.writestr(name, data)
+                # Fixed DOS epoch and platform so identical inputs have a stable checksum.
+                entry = ZipInfo(name)
+                entry.create_system = 0
+                archive.writestr(entry, data, compress_type=ZIP_DEFLATED)
         with ZipFile(stage) as archive:
             if sorted(archive.namelist()) != sorted(entries) or archive.testzip():
                 raise ValueError("Source archive did not match the file list")
             for name, data in payloads.items():
                 if archive.read(name) != data:
                     raise ValueError(f"Source verification failed for {name}")
+            local_links = verify_public_contents(archive)
         stage.replace(args.output)
-        print(f"Verified {len(entries)} files in {args.output}")
+        print(f"Verified {len(entries)} files and {local_links} local Markdown links in {args.output}. "
+              "No recognized private-data signatures in text files.")
     finally:
         stage.unlink(missing_ok=True)
 

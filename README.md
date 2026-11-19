@@ -2,9 +2,9 @@
 
 This is a Windows prototype for controlling one signed-in laptop from a phone. The laptop runs the agent and serves the dashboard. The source includes the Rust bridge, browser UI, Windows launchers and test fixtures.
 
-The [November 19 corrective audit](docs/AUDIT_FOLLOWUP.md) covers this revision. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results and remaining hardware and account checks. This is an independent development prototype.
+The [November 19 corrective audit and pre-submission follow-up](docs/AUDIT_FOLLOWUP.md) describe the published baseline and the changes in this source kit. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results and remaining hardware and account checks. This is an independent development prototype.
 
-Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.2/antigravity-remote-source.zip) to build this version on Windows.
+Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.3/antigravity-remote-source.zip) to build this version on Windows.
 
 ## Start the bridge
 
@@ -12,6 +12,8 @@ Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/relea
 2. Install Antigravity and sign in. CLI mode uses the local `agy` executable. Desktop model and quota discovery uses the separate running Antigravity App.
 3. In the extracted folder, run `.\build.bat`, then `.\Start_Antigravity_Remote.bat`. Keep the bridge running. The Connect page opens on the laptop.
 4. On the same Wi-Fi, scan the laptop's QR with the phone camera. Follow the pairing prompt. Choose **AGY CLI** in Chat to try the ACP tool permission controls.
+
+The default port is `8000`. To use another port, set `$env:BRIDGE_PORT = '9137'` in PowerShell before launching. Run one bridge per installation folder. Finish any active turn and close the previous process before using a new build.
 
 **Chat** sends prompts and shows pending tool requests. **Changes** reviews edits in the active chat's project. **Usage** shows the limits the account reports. **Projects** chooses a working folder. **Connect** handles pairing and has a retry action if the laptop is unreachable.
 

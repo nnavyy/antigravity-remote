@@ -54,25 +54,23 @@ pub fn data_dir(root: &Path) -> PathBuf {
     d
 }
 
-pub fn load_token(root: &Path, rotate: bool) -> String {
+pub fn load_token(root: &Path, rotate: bool) -> std::io::Result<String> {
     static TOKEN_LOCK: Mutex<()> = Mutex::new(());
     let _guard = TOKEN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let token_file = data_dir(root).join(".bridge_token");
     if !rotate {
-        if let Ok(raw) = fs::read_to_string(&token_file) {
-            let t = raw.trim().to_string();
-            if t.len() >= 16 {
-                return t;
-            }
+        match fs::read_to_string(&token_file) {
+            Ok(raw) if raw.trim().len() >= 16 => return Ok(raw.trim().to_owned()),
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
         }
     }
     if !rotate {
         if let Ok(env_tok) = std::env::var("BRIDGE_TOKEN") {
             let t = env_tok.trim().to_string();
             if t.len() >= 16 {
-                crate::storage::atomic_write(&token_file, t.as_bytes())
-                    .expect("Cannot persist bridge token");
-                return t;
+                crate::storage::atomic_write(&token_file, t.as_bytes())?;
+                return Ok(t);
             }
         }
     }
@@ -81,9 +79,8 @@ pub fn load_token(root: &Path, rotate: bool) -> String {
         uuid::Uuid::new_v4().simple(),
         &uuid::Uuid::new_v4().simple().to_string()[..12]
     );
-    crate::storage::atomic_write(&token_file, new_tok.as_bytes())
-        .expect("Cannot persist bridge token");
-    new_tok
+    crate::storage::atomic_write(&token_file, new_tok.as_bytes())?;
+    Ok(new_tok)
 }
 
 pub fn derive_pin(token: &str) -> String {
@@ -115,7 +112,7 @@ pub fn token_matches(candidate: &str, token: &str) -> bool {
         || constant_time_eq(c.as_bytes(), pin.as_bytes())
 }
 
-pub fn get_settings(root: &Path) -> BridgeSettings {
+fn stored_settings(root: &Path) -> BridgeSettings {
     let mut s = BridgeSettings::default();
     let settings_file = data_dir(root).join(".bridge_settings.json");
     if let Ok(raw) = fs::read_to_string(&settings_file) {
@@ -126,6 +123,10 @@ pub fn get_settings(root: &Path) -> BridgeSettings {
     if !matches!(s.remote_mode.as_str(), "lan" | "tailscale" | "tunnel") {
         s.remote_mode = "lan".to_string();
     }
+    s
+}
+
+fn apply_environment(mut s: BridgeSettings) -> BridgeSettings {
     if std::env::var("BRIDGE_ALLOW_TUNNEL").ok().as_deref() == Some("1") {
         s.remote_mode = "tunnel".to_string();
     }
@@ -135,10 +136,14 @@ pub fn get_settings(root: &Path) -> BridgeSettings {
     s
 }
 
+pub fn get_settings(root: &Path) -> BridgeSettings {
+    apply_environment(stored_settings(root))
+}
+
 pub fn save_settings(root: &Path, patch: serde_json::Value) -> std::io::Result<BridgeSettings> {
     static SETTINGS_LOCK: Mutex<()> = Mutex::new(());
     let _guard = SETTINGS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut cur = get_settings(root);
+    let mut cur = stored_settings(root);
     if let Some(mode) = patch.get("remote_mode").and_then(|v| v.as_str()) {
         if matches!(mode, "lan" | "tailscale" | "tunnel") {
             cur.remote_mode = mode.to_string();
@@ -151,10 +156,8 @@ pub fn save_settings(root: &Path, patch: serde_json::Value) -> std::io::Result<B
         cur.allow_shell = sh;
     }
     let settings_file = data_dir(root).join(".bridge_settings.json");
-    if let Ok(serialized) = serde_json::to_string_pretty(&cur) {
-        crate::storage::atomic_write(&settings_file, serialized.as_bytes())?;
-    }
-    Ok(cur)
+    crate::storage::atomic_write(&settings_file, &serde_json::to_vec_pretty(&cur)?)?;
+    Ok(apply_environment(cur))
 }
 
 fn normalize_ip(ip: IpAddr) -> IpAddr {
@@ -324,25 +327,30 @@ fn pairing_rate_limited(ip: IpAddr, invalid: bool) -> bool {
 }
 
 #[derive(Clone)]
-pub struct WsPairingToken(pub String);
+pub struct PairingToken(pub String);
 
 pub async fn security_middleware(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
+    if req.uri().path() == "/healthz" {
+        return next.run(req).await;
+    }
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let settings = get_settings(&root);
-    let token = load_token(&root, false);
+    let Ok(token) = load_token(&root, false) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"detail":"Pairing storage is unavailable on the laptop."})),
+        )
+            .into_response();
+    };
     let headers = req.headers().clone();
     let path = req.uri().path().to_string();
     let query = req.uri().query().map(|s| s.to_string());
     let client_ip = addr.ip();
     let proxied = is_proxied(&headers);
-
-    if path == "/healthz" {
-        return next.run(req).await;
-    }
 
     // 1. Network boundary check
     let allowed_net = if proxied {
@@ -480,8 +488,8 @@ pub async fn security_middleware(
             .into_response();
     }
 
-    if path == "/ws" {
-        req.extensions_mut().insert(WsPairingToken(token.clone()));
+    if matches!(path.as_str(), "/ws" | "/api/qr" | "/api/connection") {
+        req.extensions_mut().insert(PairingToken(token.clone()));
     }
     let mut resp = next.run(req).await;
     resp.headers_mut()

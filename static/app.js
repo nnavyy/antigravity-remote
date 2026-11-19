@@ -295,7 +295,7 @@ async function fetchJsonResponse(url, options = {}) {
         return {
           ok: false,
           status: res.status,
-          error: "The laptop bridge is not responding (502). Make sure the laptop is awake and the bridge is running.",
+          error: `The laptop bridge is not responding (${res.status}). Make sure the laptop is awake and the bridge is running.`,
         };
       }
       if (contentType.includes("application/json")) {
@@ -512,7 +512,7 @@ async function requestPhoneNotificationPermission() {
     if (perm === "granted") {
       showToast("Notifications enabled.", "success");
       playNotificationChime();
-      showNativeNotification("[ANTIGRAVITY]", "Notifications are ready for task updates.");
+      showBrowserNotification("[ANTIGRAVITY]", "Notifications are ready for task updates.");
     } else if (perm === "denied") {
       showToast("Notifications were denied. Change this site's permission in browser settings.", "warning");
     }
@@ -527,7 +527,7 @@ async function testSoundBoth() {
   playNotificationChime();
 
   // 2. Request laptop speaker chime via server endpoint
-  const laptop = await safeFetchJson("/api/sound/laptop", {
+  const laptopRequest = safeFetchJson("/api/sound/laptop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type: "finish" }),
@@ -535,11 +535,12 @@ async function testSoundBoth() {
 
   // 3. Show a test notification if browser permission is granted
   if ("Notification" in window && Notification.permission === "granted") {
-    showNativeNotification("[ANTIGRAVITY]", "Test: sounds and notifications are enabled.");
+    showBrowserNotification("[ANTIGRAVITY]", "Sound test requested.");
   } else if ("Notification" in window && Notification.permission === "default") {
     requestPhoneNotificationPermission();
   }
 
+  const laptop = await laptopRequest;
   const message = laptop.ok ? "Phone and laptop sound test requested." : "Phone sound test requested. Laptop sound is unavailable.";
   showToast(message,"info");
   addLogEvent(message);
@@ -571,20 +572,25 @@ async function handleNotificationButtonClick() {
     playNotificationChime();
 
     // Also play confirmation sound on laptop
-    safeFetchJson("/api/sound/laptop", {
+    const laptopRequest = safeFetchJson("/api/sound/laptop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "incoming" }),
-    }).catch(() => {});
+    });
 
     // Request browser permission if not yet granted
-    if ("Notification" in window && Notification.permission !== "granted") {
-      await requestPhoneNotificationPermission();
-    } else {
-      showToast("Sounds enabled on both devices.", "success");
-      addLogEvent("Browser notifications and sounds enabled.");
-      showNativeNotification("[ANTIGRAVITY]", "Ready to receive task updates.");
+    if ("Notification" in window && Notification.permission === "default") {
+      requestPhoneNotificationPermission();
+    } else if ("Notification" in window && Notification.permission === "granted") {
+      showBrowserNotification("[ANTIGRAVITY]", "Ready to receive task updates.");
     }
+    const laptop = await laptopRequest;
+    if (!state.soundEnabled) return;
+    const message = laptop.ok
+      ? "Phone sounds enabled. Laptop chime requested."
+      : "Phone sounds enabled. Laptop sound is unavailable.";
+    showToast(message, laptop.ok ? "success" : "info");
+    addLogEvent(message);
   }
 }
 
@@ -602,7 +608,11 @@ async function showNativeNotification(title, body) {
     body: JSON.stringify({ type: "finish" }),
   }).catch(() => {});
 
-  if (!("Notification" in window) || Notification.permission !== "granted") {
+  return showBrowserNotification(title, body);
+}
+
+async function showBrowserNotification(title, body) {
+  if (!state.soundEnabled || !("Notification" in window) || Notification.permission !== "granted") {
     return;
   }
 
@@ -1609,8 +1619,11 @@ function switchSecondaryConversation(convId) {
   loadSecondaryConversation(convId);
 }
 
+let secondaryLoadSeq = 0;
+
 async function loadSecondaryConversation(convId) {
-  if (!convId) return;
+  if (!convId || convId !== state.secondaryConversationId) return;
+  const seq = ++secondaryLoadSeq;
   const titleEl = document.getElementById("secondaryConvTitle");
   const targetConv = (state.conversations || []).find(c => c.id === convId);
   if (titleEl) {
@@ -1618,7 +1631,7 @@ async function loadSecondaryConversation(convId) {
   }
 
   const res = await safeFetchJson(`/api/conversations/${convId}`);
-  if (res.ok && res.data) {
+  if (seq === secondaryLoadSeq && convId === state.secondaryConversationId && res.ok && res.data) {
     state.secondaryConversationData = res.data;
     renderSecondaryConversationTimeline(res.data.messages || []);
     updateSecondaryActiveTaskUI(convId);
@@ -1664,7 +1677,8 @@ function updateSecondaryActiveTaskUI(convId) {
 
 async function submitSecondaryTask() {
   const input = document.getElementById("secondaryTaskInput");
-  const text = input ? input.value.trim() : "";
+  const draft = input?.value || "";
+  const text = draft.trim();
   if (!text) {
     showToast("Enter a message for the second conversation first.", "info");
     return;
@@ -1701,13 +1715,13 @@ async function submitSecondaryTask() {
     });
 
     if (res.ok) {
-      if (input) input.value = "";
+      if (state.secondaryConversationId === targetCid && input.value === draft) input.value = "";
       showToast("Message sent to the second conversation.", "success");
       addLogEvent(`Second conversation (${targetCid.slice(0, 8)}) started concurrently.`);
       if (res.data && res.data.active_task) {
         state.activeTasks[targetCid] = res.data.active_task;
         renderConvoTabs();
-        updateSecondaryActiveTaskUI(targetCid);
+        if (state.secondaryConversationId === targetCid) updateSecondaryActiveTaskUI(targetCid);
       }
       setTimeout(() => loadSecondaryConversation(targetCid), 800);
     } else {
@@ -4826,62 +4840,49 @@ function getImageUrl(imgPath) {
 }
 
 async function uploadSingleImageFile(file) {
-  if (!file) return null;
+  if (file.size > 12 * 1024 * 1024) throw new Error("File size exceeds the 12 MiB limit.");
   const formData = new FormData();
   formData.append("file", file);
-  try {
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.file_path) {
-      return {
-        filename: data.filename || file.name || "screenshot.png",
-        file_path: data.file_path,
-        file_url: data.file_url,
-      };
-    }
-  } catch (err) {
-    console.error("Could not upload image:", file.name, err);
-  }
-  return null;
+  const res = await safeFetchJson("/api/upload", {method: "POST", body: formData});
+  if (!res.ok) throw new Error(res.error);
+  if (!res.data?.file_path) throw new Error("The laptop did not return an uploaded file.");
+  return {
+    filename: res.data.filename || file.name || "screenshot.png",
+    file_path: res.data.file_path,
+    file_url: res.data.file_url,
+  };
 }
+
+let uploadingImageBatches = 0;
 
 async function uploadMultipleImageFiles(fileList) {
   if (!fileList || fileList.length === 0) return;
-  const files = Array.from(fileList).filter((f) => f && f.type && f.type.startsWith("image/"));
-  if (files.length === 0) {
-    showToast("Choose an image file (PNG, JPG, WebP, or GIF).", "warning");
-    return;
-  }
-
+  const files = Array.from(fileList);
   const btnLabel = document.querySelector(".btn-attach-image span");
-  const oldText = btnLabel ? btnLabel.textContent : "Attach images";
-
+  const failures = [];
   let successCount = 0;
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    if (btnLabel) {
-      btnLabel.textContent = files.length > 1 ? `Uploading (${i + 1}/${files.length})...` : "Uploading...";
-    }
-    const uploaded = await uploadSingleImageFile(file);
-    if (uploaded) {
+  uploadingImageBatches++;
+  if (btnLabel) btnLabel.textContent = "Uploading...";
+  try {
+    for (const file of files) {
+      let uploaded;
+      try {
+        uploaded = await uploadSingleImageFile(file);
+      } catch (err) {
+        failures.push(`${file.name || "Image"} — ${err.message}`);
+        continue;
+      }
       state.pendingImages.push(uploaded);
       successCount++;
       renderImagePreviews();
       addLogEvent(`Image '${uploaded.filename}' uploaded.`);
     }
+  } finally {
+    uploadingImageBatches--;
+    if (btnLabel && !uploadingImageBatches) btnLabel.textContent = "Attach images";
   }
-
-  if (btnLabel) btnLabel.textContent = oldText;
-
-  if (successCount > 0) {
-    showToast(`${successCount} ${successCount === 1 ? "image" : "images"} attached to your message.`, "success");
-  } else {
-    showToast("Could not upload the selected images.", "error");
-  }
+  const summary = successCount ? `${successCount} ${successCount === 1 ? "image" : "images"} attached to your message.` : "";
+  showToast([summary, ...failures].filter(Boolean).join(" "), failures.length ? (successCount ? "warning" : "error") : "success");
 }
 
 async function handleImageUpload(e) {
@@ -4937,16 +4938,20 @@ function renderImagePreviews() {
 }
 
 async function removePendingImage(idx) {
+  if (state.isSubmittingTask) {
+    showToast("Wait for the current message to finish sending before removing attachments.", "info");
+    return;
+  }
   const removed = state.pendingImages.splice(idx, 1)[0];
   renderImagePreviews();
   if (removed) {
     const fn = removed.filename || (removed.file_url ? removed.file_url.split("/").pop() : "");
     if (fn) {
-      try {
-        await fetch(`/api/upload/${encodeURIComponent(fn)}`, { method: "DELETE" });
+      const res = await safeFetchJson(`/api/upload/${encodeURIComponent(fn)}`, { method: "DELETE" });
+      if (res.ok && res.data?.deleted) {
         addLogEvent(`Image '${fn}' removed from the upload cache.`);
-      } catch (e) {
-        console.debug("Could not remove upload cache:", e);
+      } else {
+        showToast(`Attachment removed from this message. ${res.error || "The laptop did not confirm cache removal."}`, "warning");
       }
     }
   }
@@ -4987,7 +4992,7 @@ function handleTaskSendClick(mode = "auto") {
   const promptInput = document.getElementById("taskInput");
   const prompt = promptInput ? promptInput.value.trim() : "";
 
-  if (!prompt && state.pendingImages.length === 0) {
+  if (!uploadingImageBatches && !prompt && state.pendingImages.length === 0) {
     showToast("Write a message or attach an image first.", "error");
     return;
   }
@@ -5009,9 +5014,15 @@ function submitTask() {
 
 async function executeSubmitTask(queueMode = "auto") {
   if (state.isSubmittingTask) return;
+  if (uploadingImageBatches) {
+    showToast("Wait for the image upload to finish, then send your message.", "info");
+    return;
+  }
 
   const promptInput = document.getElementById("taskInput");
-  const prompt = promptInput ? promptInput.value.trim() : "";
+  const draft = promptInput?.value || "";
+  const prompt = draft.trim();
+  const sentImages = state.pendingImages.slice();
 
   if (!prompt && state.pendingImages.length === 0) {
     showToast("Write a message or attach an image first.", "error");
@@ -5020,6 +5031,14 @@ async function executeSubmitTask(queueMode = "auto") {
 
   state.isSubmittingTask = true;
   let targetConversationId = state.activeConversationId;
+  function clearSentDraft() {
+    if (promptInput && promptInput.value === draft && targetConversationId === state.activeConversationId) {
+      promptInput.value = "";
+      promptInput.style.height = "auto";
+    }
+    state.pendingImages = state.pendingImages.filter(image => !sentImages.includes(image));
+    renderImagePreviews();
+  }
 
   const autoExecChecked = document.getElementById("chkAutoExecute")?.checked ?? true;
   const btnSingle = document.getElementById("btnSubmitTask");
@@ -5047,8 +5066,8 @@ async function executeSubmitTask(queueMode = "auto") {
     }
     if (targetConversationId !== state.activeConversationId) throw new Error("The conversation changed. Review your message before sending again.");
     const modelOptions = taskModelOptions(offline);
-    const attachedImageUrls = state.pendingImages.map(img => img.file_url || img.file_path);
-    const attachedImagePaths = state.pendingImages.map(img => img.file_path || img.file_url);
+    const attachedImageUrls = sentImages.map(img => img.file_url || img.file_path);
+    const attachedImagePaths = sentImages.map(img => img.file_path || img.file_url);
     if (!offline && !state.activeConversationId) {
       const created = await safeFetchJson("/api/conversations", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({title:prompt.split("\n")[0].slice(0,60) || "Review attachments", skills:Array.from(state.selectedSkills)}) });
       if (!created.ok || !created.data?.id) throw new Error(created.error || "Could not create a conversation.");
@@ -5086,12 +5105,7 @@ async function executeSubmitTask(queueMode = "auto") {
       const pendingStatus = document.querySelector('#conversationTimeline [data-optimistic="true"] .status-clean-text');
       if (pendingStatus) pendingStatus.textContent = saved ? "[Saved offline]" : "[Not sent]";
       if (!saved) return;
-      if (promptInput) {
-        promptInput.value = "";
-        promptInput.style.height = "auto";
-      }
-      state.pendingImages = [];
-      renderImagePreviews();
+      clearSentDraft();
       return;
     }
 
@@ -5102,16 +5116,18 @@ async function executeSubmitTask(queueMode = "auto") {
     });
 
     if (!res.ok) {
-      document.querySelectorAll('#conversationTimeline .msg-bubble[data-optimistic="true"]').forEach(el => el.remove());
+      if (targetConversationId === state.activeConversationId) {
+        document.querySelectorAll('#conversationTimeline .msg-bubble[data-optimistic="true"]').forEach(el => el.remove());
+        updateProcessingStateUI(false);
+      }
       showToast(res.status ? res.error : "Delivery is unconfirmed. Check the conversation before retrying. Your message remains in the input.", "error");
-      updateProcessingStateUI(false);
       return;
     }
 
     triggerHaptic("medium");
 
     const task = res.data;
-    if (task.active_task || task.replayed) {
+    if (targetConversationId === state.activeConversationId && (task.active_task || task.replayed)) {
       renderActiveTaskUI(task.active_task || null);
       if (task.replayed && !task.active_task) {
         delete state.activeTasks[state.activeConversationId];
@@ -5126,20 +5142,15 @@ async function executeSubmitTask(queueMode = "auto") {
       addLogEvent(`Message sent to laptop.`);
       showToast("Message sent to Antigravity.", "success");
     } else {
-      renderPendingTask(task);
+      if (targetConversationId === state.activeConversationId) renderPendingTask(task);
       addLogEvent(`Task #${task.task_id} is ready for review.`);
       showToast("Task ready for review.", "info");
     }
 
-    if (promptInput) {
-      promptInput.value = "";
-      promptInput.style.height = "auto";
-    }
-    state.pendingImages = [];
-    renderImagePreviews();
+    clearSentDraft();
   } catch (e) {
     showToast(`Could not send the message: ${e.message}`, "error");
-    updateProcessingStateUI(false);
+    if (targetConversationId === state.activeConversationId) updateProcessingStateUI(false);
   } finally {
     if (btnSingle) {
       btnSingle.disabled = false;
