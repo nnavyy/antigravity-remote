@@ -20,9 +20,56 @@ Built by **Nanda Zhafran Mahendra** as an independent MIT-licensed development p
 - **Safe Mobile Git Review:** Review modified and untracked files per conversation workspace, accept individual files or commit all, and revert tracked changes without silently deleting untracked work.
 - **Lightweight Native Rust Engine:** Compiles to a single ~4.2 MiB Windows executable (`axum` + `tokio`), requires no external API keys, and passes 166 core automated tests plus 7-viewport headless Chrome checks.
 
+## User Flow
+
+```mermaid
+flowchart TD
+    A["1. Start Bridge on Windows Laptop (Start_Antigravity_Remote.bat)"] --> B["2. Pair Phone over Same Wi-Fi (Scan QR or Enter 6-Digit PIN)"]
+    B --> C["3. Choose Model & Performance Tier (Live from Signed-in AGY Account)"]
+    C --> D["4. Send Prompt from Phone (AGY App or AGY CLI)"]
+    D --> E{"5. Tool Permission Needed?"}
+    E -->|Yes| F["Approve or Deny on Phone (Allow once / Deny once)"]
+    F --> G["6. Watch Live Stream & Send Follow-up Prompts"]
+    E -->|No| G
+    G --> H["7. Review Workspace Git Diff (Accept or Revert Tracked Files)"]
+    H --> I["8. Revoke Anytime on Laptop (Rotate Token & Disconnect WebSockets)"]
+```
+
+## Architecture & Request Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Phone as Phone Browser (PWA)
+    participant Bridge as Local Rust Bridge (antigravity-bridge.exe)
+    participant AGY as Local Antigravity (App / agy acp)
+    participant Git as Local Git Workspace
+
+    Note over Phone,Bridge: Same Wi-Fi LAN or Private Tailscale (No Cloud Relay)
+    Phone->>Bridge: Scan QR / Submit 6-digit PIN
+    Bridge-->>Phone: Issue HttpOnly SameSite=Lax Session Cookie
+
+    Phone->>Bridge: GET /api/models (Account Catalog)
+    Bridge->>AGY: Query Live Available Models & Variants
+    AGY-->>Bridge: Signed-in Account Models (Low / Medium / High / XHigh)
+    Bridge-->>Phone: Render Live Model Picker
+
+    Phone->>Bridge: POST /api/tasks/submit (UUID request_id + CSRF)
+    Bridge->>AGY: Dispatch Prompt (Existing Session / agy acp)
+    AGY-->>Bridge: Tool Permission Request
+    Bridge-->>Phone: Push Live Permission Card over WebSocket
+    Phone->>Bridge: Allow once / Deny once
+    Bridge->>AGY: Forward Decision & Stream Progress
+    AGY-->>Git: Apply Approved Workspace Edits
+
+    Phone->>Bridge: Open Changes Tab & Review Diff
+    Bridge->>Git: Read Status / Diff (Accept or Revert Tracked Only)
+    Git-->>Phone: Updated Workspace Status
+```
+
 The [November 19 corrective audit and pre-submission follow-up](docs/AUDIT_FOLLOWUP.md) describe the verified fixes and engineering scope. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results, and remaining hardware and account checks.
 
-Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.4/antigravity-remote-source.zip) to build this version on Windows.
+Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.5/antigravity-remote-source.zip) to build this version on Windows.
 
 ## Start the bridge
 
