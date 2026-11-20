@@ -55,7 +55,7 @@ def main():
         docs/review/audit-followup/permission-live.json docs/review/audit-followup/permission-browser.json
         docs/review/audit-followup/git-workspaces.json docs/review/audit-followup/load.json
         docs/review/audit-followup/six-findings.json docs/review/audit-followup/browser/model-browser.json
-        .gitignore Cargo.toml Cargo.lock LICENSE NOTICE CITATION.cff CODE_OF_CONDUCT.md build.bat publish_build.ps1 Start_Antigravity_Remote.bat
+        .gitignore Cargo.toml Cargo.lock LICENSE NOTICE CITATION.cff CODE_OF_CONDUCT.md install.ps1 build.bat publish_build.ps1 Start_Antigravity_Remote.bat
         open_connect.ps1 Cek_Link_HP.bat start_background_bridge.vbs run_background.bat
         rs/acp.rs rs/acp/permissions.rs rs/conversations.rs rs/main.rs rs/models.rs rs/receipts.rs
         rs/security.rs rs/storage.rs rs/telemetry.rs rs/workspaces.rs

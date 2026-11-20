@@ -69,9 +69,19 @@ sequenceDiagram
 
 The [November 19 corrective audit and pre-submission follow-up](docs/AUDIT_FOLLOWUP.md) describe the verified fixes and engineering scope. The [earlier release review](docs/GITHUB_HANDOFF_REVIEW.md) covers the UI fixes, test results, and remaining hardware and account checks.
 
-Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.6/antigravity-remote-source.zip) to build this version on Windows.
+Get the [reviewed source ZIP](https://github.com/nnavyy/antigravity-remote/releases/download/v2.0.0-dev.7/antigravity-remote-source.zip) to build this version on Windows.
 
 ## Start the bridge
+
+### Quick Install (PowerShell One-Liner)
+
+```powershell
+irm https://raw.githubusercontent.com/nnavyy/antigravity-remote/main/install.ps1 | iex
+```
+
+`install.ps1` downloads the latest GitHub release archive, verifies its SHA-256 checksum, extracts to `%LOCALAPPDATA%\AntigravityRemote` (preserving existing `data/` and `logs/` on updates), runs `build.bat` if Rust is installed, and launches the Connect QR page. Set `$env:ANTIGRAVITY_REMOTE_NO_LAUNCH = '1'` to install without auto-launching, or inspect [install.ps1](install.ps1) directly before running.
+
+### Manual Setup (From Source ZIP or Clone)
 
 1. Install stable Rust for Windows and the linker for your toolchain. MSVC uses Visual C++ Build Tools. GNU needs MinGW GCC and dlltool on PATH.
 2. Install Antigravity and sign in. CLI mode uses the local `agy` executable. Desktop model and quota discovery uses the separate running Antigravity App.
